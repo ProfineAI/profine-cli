@@ -1,0 +1,135 @@
+# Pattern sets used across profine for AST extraction,
+# dependency discovery, and error handling.
+
+# AST extraction patterns (reader/extractor.py)
+model_loaders:
+  - from_pretrained
+  - AutoModel
+  - AutoModelFor
+
+optimizers:
+  - Adam
+  - AdamW
+  - SGD
+  - Adagrad
+  - Adadelta
+  - RMSprop
+  - LBFGS
+  - SparseAdam
+  - RAdam
+  - NAdam
+  - Adamax
+
+schedulers:
+  - StepLR
+  - MultiStepLR
+  - ExponentialLR
+  - CosineAnnealingLR
+  - CosineAnnealingWarmRestarts
+  - ReduceLROnPlateau
+  - CyclicLR
+  - OneCycleLR
+  - LinearLR
+  - PolynomialLR
+  - SequentialLR
+  - ChainedScheduler
+  - ConstantLR
+  - get_linear_schedule_with_warmup
+  - get_cosine_schedule_with_warmup
+  - get_scheduler
+
+loss_functions:
+  - CrossEntropyLoss
+  - MSELoss
+  - L1Loss
+  - NLLLoss
+  - BCELoss
+  - BCEWithLogitsLoss
+  - SmoothL1Loss
+  - HuberLoss
+  - KLDivLoss
+  - CTCLoss
+  - cross_entropy
+  - mse_loss
+  - nll_loss
+  - binary_cross_entropy
+
+distributed:
+  - DistributedDataParallel
+  - DataParallel
+  - FSDP
+  - FullyShardedDataParallel
+  - init_process_group
+  - DeepSpeedEngine
+  - deepspeed.initialize
+
+dataloaders:
+  - DataLoader
+
+# Dependency resolution (modal/discovery.py)
+import_to_pip:
+  cv2: opencv-python
+  PIL: Pillow
+  sklearn: scikit-learn
+  yaml: PyYAML
+  attr: attrs
+  bs4: beautifulsoup4
+  gi: PyGObject
+  wx: wxPython
+  serial: pyserial
+  usb: pyusb
+  skimage: scikit-image
+  dateutil: python-dateutil
+  dotenv: python-dotenv
+  jose: python-jose
+  magic: python-magic
+  lxml: lxml
+  google: google-cloud-core
+
+# Modal transient error patterns (modal/executor.py)
+transient_error_patterns:
+  - "external shut-down"
+  - "could not connect to modal"
+  - "connection reset"
+  - "connection refused"
+  - "temporary failure in name resolution"
+
+# Known top-level PyPI import names. When a Modal run fails with
+# `ModuleNotFoundError: <name>` and `<name>` is in this set, treat it as a
+# missing dependency (auto-install) rather than asking the LLM to rewrite
+# the source. (profiler/orchestrator.py)
+known_pypi_toplevel:
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - sklearn
+  - tqdm
+  - yaml
+  - pyyaml
+  - requests
+  - transformers
+  - datasets
+  - tokenizers
+  - accelerate
+  - peft
+  - trl
+  - wandb
+  - tensorboard
+  - tensorboardX
+  - einops
+  - safetensors
+  - huggingface_hub
+  - sentencepiece
+  - pillow
+  - opencv
+  - opencv_python
+  - h5py
+  - lightning
+  - pytorch_lightning
+  - lightning_fabric
+  - deepspeed
+  - bitsandbytes
+  - flash_attn
+  - xformers
+  - triton

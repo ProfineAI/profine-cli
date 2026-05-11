@@ -1,0 +1,541 @@
+# Optimization catalog — each entry describes an applicable optimization
+# with conditions, expected speedup, risks, and implementation hints.
+
+entries:
+  # Attention
+  - id: flash_attention_2
+    category: attention
+    name: FlashAttention-2
+    description: >
+      Fused, IO-aware attention kernel that avoids materializing the full
+      attention matrix. 2-4x faster attention, significant memory savings.
+    required:
+      - field: attention_type.value
+        operator: in
+        value: [multi-head, causal_mha, mha, mqa, gqa, self-attention]
+      - field: precision.training_dtype.value
+        operator: in
+        value: [bfloat16, float16, bf16, fp16]
+    forbidden:
+      - field: attention_type.value
+        operator: eq
+        value: alibi_with_custom_mask
+      - field: attention_impl.value
+        operator: in
+        value: [flash_attention_2, flash_attention_3, xformers]
+    expected_speedup:
+      kernel_low: 2.0
+      kernel_high: 4.0
+      end_to_end_low_pct: 10
+      end_to_end_high_pct: 25
+      depends_on: "attention's share of step time"
+    risks:
+      - Small numerical differences vs eager attention in bf16
+      - Custom attention masks may not be supported
+    evidence:
+      - kind: paper
+        ref: "Dao 2023 - FlashAttention-2"
+        url: "https://arxiv.org/abs/2307.08691"
+      - kind: docs
+        ref: PyTorch SDPA docs
+        url: "https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    code_pattern: >
+      Replace manual attention with torch.nn.functional.scaled_dot_product_attention
+      or set attn_implementation='flash_attention_2' in from_pretrained()
+    addresses_bottlenecks: [attention, compute_bound, memory_capacity_bound]
+
+  - id: sdpa
+    category: attention
+    name: Scaled Dot Product Attention (SDPA)
+    description: >
+      PyTorch's built-in fused attention that auto-selects the best backend
+      (FlashAttention, Memory-Efficient, or Math). Zero-config upgrade from manual attention.
+    required:
+      - field: attention_type.value
+        operator: in
+        value: [multi-head, causal_mha, mha, mqa, gqa, manual, self-attention]
+    forbidden:
+      - field: attention_impl.value
+        operator: in
+        value: [sdpa, flash_attention_2, flash_attention_3, xformers]
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 4.0
+      end_to_end_low_pct: 5
+      end_to_end_high_pct: 25
+      depends_on: attention impl and hardware
+    risks:
+      - Requires PyTorch >= 2.0
+    evidence:
+      - kind: docs
+        ref: PyTorch SDPA
+        url: "https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    code_pattern: "Replace manual Q@K^T/sqrt(d) matmul + softmax + V with F.scaled_dot_product_attention(Q, K, V)"
+    addresses_bottlenecks: [attention, compute_bound]
+
+  # Precision
+  - id: bf16_mixed_precision
+    category: precision
+    name: BF16 Mixed Precision
+    description: >
+      Train in bfloat16 with torch.autocast. Halves memory for activations,
+      enables tensor core usage, typically 1.5-2x throughput improvement.
+    required:
+      - field: precision.training_dtype.value
+        operator: in
+        value: [float32, fp32]
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 2.5
+      end_to_end_low_pct: 30
+      end_to_end_high_pct: 60
+      depends_on: how much time is in fp32 matmuls
+    risks:
+      - Requires bf16-capable hardware (Ampere+)
+      - Rare numerical issues in some loss functions
+    evidence:
+      - kind: blog
+        ref: PyTorch AMP Tutorial
+        url: "https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html"
+    code_pattern: >
+      Wrap forward pass with torch.autocast('cuda', dtype=torch.bfloat16).
+      For HuggingFace: set bf16=True in TrainingArguments.
+    addresses_bottlenecks: [precision, compute_bound, memory_bandwidth_bound, memory_capacity_bound]
+
+  - id: fp16_mixed_precision
+    category: precision
+    name: FP16 Mixed Precision with GradScaler
+    description: >
+      Train in float16 with torch.autocast + GradScaler for loss scaling.
+      Similar speedup to bf16 but requires gradient scaling to avoid underflow.
+    required:
+      - field: precision.training_dtype.value
+        operator: in
+        value: [float32, fp32]
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 2.5
+      end_to_end_low_pct: 30
+      end_to_end_high_pct: 60
+      depends_on: how much time is in fp32 matmuls
+    risks:
+      - Requires GradScaler for stable training
+      - More numerical issues than bf16
+    evidence:
+      - kind: docs
+        ref: PyTorch AMP
+        url: "https://pytorch.org/docs/stable/amp.html"
+    code_pattern: "Wrap with torch.autocast('cuda', dtype=torch.float16) + GradScaler"
+    addresses_bottlenecks: [precision, compute_bound, memory_bandwidth_bound]
+
+  - id: tf32_matmul
+    category: precision
+    name: TF32 matmul precision
+    description: >
+      Set the float32 matmul precision to "high" so cuBLAS uses TF32 tensor
+      cores on Ampere+ for fp32 GEMMs. One-line change, no accuracy impact
+      for most training workloads.
+    required:
+      - field: precision.training_dtype.value
+        operator: in
+        value: [float32, fp32]
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 2.5
+      end_to_end_low_pct: 15
+      end_to_end_high_pct: 50
+      depends_on: matmul share of step time
+    risks:
+      - Slight numerical drift vs. strict fp32 (rarely material for training)
+    evidence:
+      - kind: docs
+        ref: torch.set_float32_matmul_precision
+        url: "https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html"
+    code_pattern: "torch.set_float32_matmul_precision('high')"
+    addresses_bottlenecks: [precision, compute_bound]
+
+  # Compiler
+  - id: torch_compile
+    category: compiler
+    name: torch.compile
+    description: >
+      JIT compile the model with torch.compile for kernel fusion and optimization.
+      Reduces Python overhead and fuses elementwise ops.
+    forbidden:
+      - field: compile_mode.value
+        operator: in
+        value: [default, reduce-overhead, max-autotune]
+    expected_speedup:
+      kernel_low: 1.1
+      kernel_high: 2.0
+      end_to_end_low_pct: 5
+      end_to_end_high_pct: 40
+      depends_on: model complexity and elementwise op share
+    risks:
+      - First iteration is slow (compilation)
+      - Some dynamic shapes may cause recompilation
+      - Not all ops supported
+    evidence:
+      - kind: docs
+        ref: torch.compile tutorial
+        url: "https://pytorch.org/tutorials/intermediate/torch_compile_tutorial.html"
+    code_pattern: "model = torch.compile(model)  # or torch.compile(model, mode='reduce-overhead')"
+    addresses_bottlenecks: [compute_bound, memory_bandwidth_bound, latency_bound]
+
+  - id: torch_compile_max_autotune
+    category: compiler
+    name: "torch.compile mode='max-autotune'"
+    description: >
+      torch.compile with max-autotune benchmarks multiple kernel implementations
+      and picks the fastest. Higher compile time but better steady-state throughput.
+    forbidden:
+      - field: compile_mode.value
+        operator: eq
+        value: max-autotune
+      # CUDAGraphs (max-autotune default) breaks under grad accumulation;
+      # use torch_compile_max_autotune_no_cudagraphs instead.
+      - field: distributed.gradient_accumulation_steps.value
+        operator: gte
+        value: 2
+    expected_speedup:
+      kernel_low: 1.1
+      kernel_high: 2.5
+      end_to_end_low_pct: 10
+      end_to_end_high_pct: 50
+      depends_on: model architecture and hardware
+    risks:
+      - Very slow first iteration (minutes)
+      - May not work with all models
+      - CUDAGraphs (default) breaks under gradient accumulation
+    evidence:
+      - kind: docs
+        ref: torch.compile modes
+        url: "https://pytorch.org/docs/stable/generated/torch.compile.html"
+    code_pattern: "model = torch.compile(model, mode='max-autotune')"
+    addresses_bottlenecks: [compute_bound, memory_bandwidth_bound]
+
+  - id: torch_compile_max_autotune_no_cudagraphs
+    category: compiler
+    name: "torch.compile mode='max-autotune-no-cudagraphs'"
+    description: >
+      max-autotune kernel selection without CUDAGraphs. Same kernel-level
+      gains as max-autotune but safe under gradient accumulation, multi-step
+      forwards, and any pattern that reuses tensor memory between iterations.
+    required:
+      # Only useful when grad accumulation forces the no-cudagraphs path;
+      # otherwise the regular max-autotune is strictly better.
+      - field: distributed.gradient_accumulation_steps.value
+        operator: gte
+        value: 2
+    forbidden:
+      - field: compile_mode.value
+        operator: eq
+        value: max-autotune-no-cudagraphs
+    expected_speedup:
+      kernel_low: 1.1
+      kernel_high: 2.5
+      end_to_end_low_pct: 8
+      end_to_end_high_pct: 40
+      depends_on: model architecture and hardware
+    risks:
+      - Very slow first iteration (minutes)
+      - Slightly less peak throughput than max-autotune (no CUDAGraph capture)
+    evidence:
+      - kind: docs
+        ref: torch.compile modes
+        url: "https://pytorch.org/docs/stable/generated/torch.compile.html"
+    code_pattern: "model = torch.compile(model, mode='max-autotune-no-cudagraphs')"
+    addresses_bottlenecks: [compute_bound, memory_bandwidth_bound]
+
+  # Batch Size / Gradient Accumulation
+  - id: increase_batch_reduce_grad_accum
+    category: memory
+    name: Increase Micro-Batch Size / Reduce Gradient Accumulation
+    description: >
+      When significant GPU memory headroom exists, increase the micro-batch
+      size and proportionally reduce gradient_accumulation_steps. This
+      maintains the same effective batch size but with fewer forward/backward
+      passes per optimizer step, reducing per-step wall time.
+    required:
+      - field: distributed.gradient_accumulation_steps.value
+        operator: gte
+        value: 2
+    expected_speedup:
+      end_to_end_low_pct: 10
+      end_to_end_high_pct: 60
+      depends_on: memory headroom and current gradient_accumulation_steps
+    risks:
+      - Larger micro-batches may change convergence behavior slightly
+      - Must maintain the same effective batch size (micro_batch * grad_accum)
+      - Very large batches may become compute-bound with diminishing returns
+    code_pattern: >
+      Increase batch_size (e.g. 12 -> 48) and reduce gradient_accumulation_steps
+      proportionally (e.g. 40 -> 10) to keep effective batch size constant.
+    addresses_bottlenecks: [compute_bound, memory_capacity_bound, underutilized]
+
+  # Data Pipeline
+  - id: dataloader_workers
+    category: data_pipeline
+    name: Increase DataLoader num_workers
+    description: >
+      Use multiple worker processes for data loading to overlap data
+      preparation with GPU compute.
+    required: []
+    expected_speedup:
+      end_to_end_low_pct: 5
+      end_to_end_high_pct: 30
+      depends_on: dataloader stall percentage
+    risks:
+      - Higher CPU/memory usage
+      - May cause issues with some datasets
+    code_pattern: "DataLoader(..., num_workers=N, pin_memory=True, persistent_workers=True, prefetch_factor=2)"
+    addresses_bottlenecks: [data_pipeline_bound, data_pipeline]
+
+  # Optimizer
+  - id: fused_adamw
+    category: optimizer
+    name: Fused AdamW
+    description: >
+      Single CUDA kernel for the entire Adam update step. Reduces kernel
+      launch overhead and memory bandwidth usage.
+    required:
+      - field: optimizer.name.value
+        operator: in
+        value: [AdamW, Adam]
+    forbidden:
+      - field: optimizer.fused.value
+        operator: eq
+        value: true
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 3.0
+      end_to_end_low_pct: 2
+      end_to_end_high_pct: 8
+      depends_on: "optimizer's share of step time"
+    risks:
+      - Requires PyTorch >= 2.0
+      - Requires CUDA
+    evidence:
+      - kind: docs
+        ref: PyTorch fused optimizers
+        url: "https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html"
+    code_pattern: "torch.optim.AdamW(params, fused=True)"
+    addresses_bottlenecks: [optimizer, memory_bandwidth_bound]
+
+  - id: foreach_adamw
+    category: optimizer
+    name: Foreach AdamW
+    description: >
+      Batched parameter update using foreach ops. Fewer kernel launches
+      than the default per-parameter approach.
+    required:
+      - field: optimizer.name.value
+        operator: in
+        value: [AdamW, Adam]
+    forbidden:
+      - field: optimizer.fused.value
+        operator: eq
+        value: true
+      - field: optimizer.foreach.value
+        operator: eq
+        value: true
+    expected_speedup:
+      kernel_low: 1.2
+      kernel_high: 2.0
+      end_to_end_low_pct: 1
+      end_to_end_high_pct: 5
+      depends_on: "optimizer's share of step time"
+    risks:
+      - Higher peak memory (batches all params)
+    code_pattern: "torch.optim.AdamW(params, foreach=True)"
+    addresses_bottlenecks: [optimizer, memory_bandwidth_bound]
+
+  - id: adamw_8bit_bnb
+    category: optimizer
+    name: 8-bit AdamW (bitsandbytes)
+    description: >
+      Replace AdamW with bitsandbytes.optim.AdamW8bit. Quantizes optimizer
+      states to 8-bit, cutting optimizer memory by ~75% with negligible
+      training quality impact for most LLM workloads.
+    required:
+      - field: optimizer.name.value
+        operator: in
+        value: [AdamW, Adam]
+    expected_speedup:
+      end_to_end_low_pct: 0
+      end_to_end_high_pct: 10
+      depends_on: whether memory pressure currently caps batch size
+    risks:
+      - Requires bitsandbytes install with matching CUDA version
+      - Saves memory but rarely improves throughput on its own
+      - Skip if optimizer is already 8-bit
+    evidence:
+      - kind: docs
+        ref: bitsandbytes optimizers
+        url: "https://github.com/bitsandbytes-foundation/bitsandbytes"
+    code_pattern: "from bitsandbytes.optim import AdamW8bit; optimizer = AdamW8bit(params, lr=...)"
+    addresses_bottlenecks: [memory_capacity_bound, optimizer]
+
+  - id: paged_adamw_bnb
+    category: optimizer
+    name: Paged AdamW (bitsandbytes)
+    description: >
+      Use bitsandbytes paged AdamW (PagedAdamW32bit / PagedAdamW8bit) which
+      offloads optimizer state pages to CPU on demand, eliminating OOM
+      spikes during the optimizer step.
+    required:
+      - field: optimizer.name.value
+        operator: in
+        value: [AdamW, Adam]
+    expected_speedup:
+      end_to_end_low_pct: 0
+      end_to_end_high_pct: 5
+      depends_on: how often optimizer-step OOM is the bottleneck
+    risks:
+      - Requires bitsandbytes
+      - PCIe transfer overhead during paging
+    evidence:
+      - kind: docs
+        ref: QLoRA paper / bitsandbytes paged optimizers
+        url: "https://arxiv.org/abs/2305.14314"
+    code_pattern: "from bitsandbytes.optim import PagedAdamW8bit; optimizer = PagedAdamW8bit(params, lr=...)"
+    addresses_bottlenecks: [memory_capacity_bound, optimizer]
+
+  # Memory
+  - id: gradient_checkpointing
+    category: memory
+    name: Gradient Checkpointing
+    description: >
+      Trade compute for memory by recomputing activations during backward
+      pass instead of storing them. Reduces memory by ~60% with ~30% compute overhead.
+    required: []
+    expected_speedup:
+      end_to_end_low_pct: -30
+      end_to_end_high_pct: 0
+      depends_on: enables larger batch sizes or longer sequences
+    risks:
+      - 30-40% slower per step
+      - Only beneficial if memory-constrained
+    evidence:
+      - kind: paper
+        ref: "Training Deep Nets with Sublinear Memory Cost"
+        url: "https://arxiv.org/abs/1604.06174"
+    code_pattern: "model.gradient_checkpointing_enable() for HF; torch.utils.checkpoint.checkpoint() for raw PyTorch"
+    addresses_bottlenecks: [memory_capacity_bound]
+
+  - id: activation_offloading
+    category: memory
+    name: Activation Offloading to CPU
+    description: >
+      Offload activations to CPU RAM during forward pass, reload during backward.
+      Extreme memory savings at the cost of PCIe bandwidth.
+    required: []
+    expected_speedup:
+      end_to_end_low_pct: -50
+      end_to_end_high_pct: -10
+      depends_on: PCIe bandwidth and activation size
+    risks:
+      - Significant throughput reduction
+      - Only for extreme memory pressure
+    code_pattern: "Use DeepSpeed ZeRO or custom offloading hooks"
+    addresses_bottlenecks: [memory_capacity_bound]
+
+  # Distributed
+  - id: ddp
+    category: distributed
+    name: DistributedDataParallel (DDP)
+    description: >
+      Replace DataParallel with DDP for efficient multi-GPU training.
+      Overlaps gradient communication with backward pass.
+    required:
+      - field: distributed.strategy.value
+        operator: in
+        value: [none, data_parallel]
+    expected_speedup:
+      end_to_end_low_pct: 20
+      end_to_end_high_pct: 80
+      depends_on: number of GPUs and communication overhead
+    risks:
+      - Requires launching with torchrun/mp.spawn
+      - Script structure changes needed
+    evidence:
+      - kind: docs
+        ref: PyTorch DDP
+        url: "https://pytorch.org/tutorials/intermediate/ddp_tutorial.html"
+    code_pattern: "model = DDP(model, device_ids=[local_rank]); launch with torchrun"
+    addresses_bottlenecks: [communication_bound, underutilized]
+
+  - id: fsdp
+    category: distributed
+    name: Fully Sharded Data Parallel (FSDP)
+    description: >
+      Shard model parameters, gradients, and optimizer states across GPUs.
+      Enables training models that don't fit on a single GPU.
+    required:
+      - field: distributed.strategy.value
+        operator: in
+        value: [none, data_parallel, ddp]
+    expected_speedup:
+      end_to_end_low_pct: 0
+      end_to_end_high_pct: 50
+      depends_on: model size and GPU count
+    risks:
+      - Higher communication overhead than DDP
+      - Requires careful wrapping
+    evidence:
+      - kind: docs
+        ref: PyTorch FSDP
+        url: "https://pytorch.org/tutorials/intermediate/FSDP_tutorial.html"
+    code_pattern: "model = FSDP(model, ...); requires torch.distributed init"
+    addresses_bottlenecks: [memory_capacity_bound, communication_bound]
+
+  # Kernel Fusion
+  - id: fused_layer_norm
+    category: kernel_fusion
+    name: Fused LayerNorm / RMSNorm
+    description: >
+      Replace separate elementwise ops in normalization with a single fused CUDA kernel.
+    required: []
+    expected_speedup:
+      kernel_low: 1.5
+      kernel_high: 3.0
+      end_to_end_low_pct: 1
+      end_to_end_high_pct: 5
+      depends_on: "normalization's share of step time"
+    risks:
+      - Requires apex or triton kernel
+    code_pattern: "from apex.normalization import FusedLayerNorm; or use torch.compile which fuses automatically"
+    addresses_bottlenecks: [normalization, memory_bandwidth_bound]
+
+  # Memory Layout
+  - id: channels_last
+    category: memory_layout
+    name: Channels-Last Memory Format
+    description: >
+      Use NHWC memory layout instead of NCHW for better tensor core utilization in CNNs.
+    required:
+      - field: model_family.value
+        operator: in
+        value: [ResNet, EfficientNet, ConvNet, VGG, CNN]
+    expected_speedup:
+      kernel_low: 1.1
+      kernel_high: 1.5
+      end_to_end_low_pct: 5
+      end_to_end_high_pct: 20
+      depends_on: "convolution's share of compute"
+    risks:
+      - Only helps CNNs, not transformers
+      - Some ops may fall back to contiguous
+    code_pattern: "model = model.to(memory_format=torch.channels_last); input = input.to(memory_format=torch.channels_last)"
+    addresses_bottlenecks: [memory_bandwidth_bound, compute_bound]
+
+# Loss-tolerance overrides for optimization classes whose math
+# legitimately perturbs the loss trajectory beyond the default
+# rtol=1e-2 / atol=1e-4 used for algebraic-equivalent rewrites.
+# Match is by category fragment (substring), so e.g. "mixed_precision"
+# matches both "mixed_precision" and "precision". Each entry asserts
+# "drift up to this tolerance is expected and OK for this class."
+category_tolerances:
+  precision: { rtol: 5.0e-2, atol: 1.0e-2 }    # bf16/fp16 autocast
+  mixed_precision: { rtol: 5.0e-2, atol: 1.0e-2 }
+  quantization: { rtol: 1.0e-1, atol: 5.0e-2 }  # int8/fp8 — coarser still

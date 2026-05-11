@@ -1,0 +1,1 @@
+from profine.schema.architecture_record import ARCHITECTURE_SCHEMA

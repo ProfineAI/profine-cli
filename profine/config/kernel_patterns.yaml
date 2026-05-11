@@ -1,0 +1,136 @@
+# Kernel categorization patterns. First matching category wins, so
+# order matters: attention before matmul (flash kernels embed "cutlass"
+# in their names), optimizer before elementwise (_foreach_ ops match
+# generic triton_fused patterns otherwise).
+
+# CompiledFxGraph wrappers double-count their contents, so they must
+# stay excluded from category / phase aggregation.
+exclude_patterns:
+  - "ProfilerStep*"
+  - "cudaDeviceSynchronize"
+  - "cudaStreamSynchronize"
+  - "cudaMemcpyAsync"
+  - "cudaLaunchKernel"
+  - "Activity Buffer"
+  - "Buffer Flush"
+  - "## Call CompiledFxGraph"
+
+# Kernel name substring -> category (case-insensitive matching)
+categories:
+  attention:
+    - flash_fwd
+    - flash_bwd
+    - sdpa
+    - fmha
+    - xformers
+    - efficient_attention
+    - scaled_dot
+    - bmm
+  matmul:
+    - gemm
+    - cublas
+    - cublaslt
+    - cutlass
+    - sm80_xmma
+    - sm90_xmma
+    - "aten::mm"
+    - "aten::addmm"
+    - "aten::matmul"
+  normalization:
+    - layer_norm
+    - batch_norm
+    - rms_norm
+    - fused_norm
+    - group_norm
+    - GammaBeta  # layernorm backward kernel
+  optimizer:
+    - _foreach_  # fused optimizer ops (AdamW, SGD, etc.)
+    - adam
+    - adamw
+    - sgd
+    - lamb
+    - fused_adam
+    - foreach_adam
+    - "Optimizer"
+  elementwise:
+    - gelu
+    - relu
+    - silu
+    - swish
+    - dropout
+    - triton_poi
+    - triton_fused
+    - sigmoid
+    - tanh
+    - softmax
+    - masked_fill
+    - "aten::mul"
+    - "aten::add"
+    - "aten::div"
+    - "aten::sub"
+    - "aten::fill_"
+    - "aten::eq"
+    - "aten::clamp"
+    - "aten::reciprocal"
+    - nll_loss
+    - cross_entropy
+    - embedding
+  communication:
+    - nccl
+    - all_reduce
+    - reduce_scatter
+    - all_gather
+    - broadcast
+  memory:
+    - memcpy
+    - "copy_"
+    - reshape
+    - permute
+    - "scatter_"
+    - to_copy
+    - contiguous
+    - "Memcpy"
+    - "Memset"
+    - "aten::cat"
+    - CatArray
+  dataloader:
+    - dataloader
+    - "__next__"
+    - pin_memory
+
+# Precision detection from kernel names (fallback when input_dtypes is
+# empty). bf16 must come first: "float16" appears as a substring inside
+# "bfloat16" and would mislabel bf16 runs as fp16.
+precision_from_kernel:
+  bf16:
+    - bf16
+    - s16816
+    - bfloat16
+  fp8:
+    - e4m3
+    - e5m2
+    - fp8
+  fp16:
+    - hgemm
+    - h884
+    - "c10::Half"
+    - "__half"
+  int8:
+    - i8816
+    - int8
+    - s8
+  fp32:
+    - sgemm
+
+# Attention implementation detection (checked in order, first match wins)
+attention_impl:
+  flash_attention_2:
+    - flash_fwd
+    - flash_bwd
+  memory_efficient:
+    - efficient_attention
+  sdpa:
+    - scaled_dot
+    - sdpa
+  manual:
+    - bmm

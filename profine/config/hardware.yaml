@@ -1,0 +1,98 @@
+# GPU hardware presets for Modal execution.
+
+presets:
+  1x_t4:
+    label: "1x T4 (16 GB)"
+    modal_gpu: "T4"
+    gpu_count: 1
+    gpu_kind: "T4"
+    vram_gb: 16.0
+    bf16_supported: false
+    flash_attention_supported: true
+    fp8_supported: false
+    peak_tflops_fp32: 8.1
+    peak_tflops_fp16: 65.0
+    peak_tflops_bf16: 0.0
+    peak_tflops_fp8: 0.0
+    peak_memory_bandwidth_gb_s: 320.0
+    compute_capability: "sm75"
+    cost_per_hour: 0.59
+
+  1x_l4:
+    label: "1x L4 (24 GB)"
+    modal_gpu: "L4"
+    gpu_count: 1
+    gpu_kind: "L4"
+    vram_gb: 24.0
+    bf16_supported: true
+    flash_attention_supported: true
+    fp8_supported: false
+    peak_tflops_fp32: 30.3
+    peak_tflops_fp16: 121.0
+    peak_tflops_bf16: 121.0
+    peak_tflops_fp8: 0.0
+    peak_memory_bandwidth_gb_s: 300.0
+    compute_capability: "sm89"
+    cost_per_hour: 0.73
+
+  1x_a10g:
+    label: "1x A10G (24 GB)"
+    modal_gpu: "A10G"
+    gpu_count: 1
+    gpu_kind: "A10G"
+    vram_gb: 24.0
+    bf16_supported: true
+    flash_attention_supported: true
+    fp8_supported: false
+    peak_tflops_fp32: 31.2
+    peak_tflops_fp16: 125.0
+    peak_tflops_bf16: 125.0
+    peak_tflops_fp8: 0.0
+    peak_memory_bandwidth_gb_s: 600.0
+    compute_capability: "sm86"
+    cost_per_hour: 1.10
+
+  1x_a100:
+    label: "1x A100 (80 GB)"
+    modal_gpu: "A100-80GB"
+    gpu_count: 1
+    gpu_kind: "A100"
+    vram_gb: 80.0
+    bf16_supported: true
+    flash_attention_supported: true
+    fp8_supported: false
+    peak_tflops_fp32: 19.5
+    peak_tflops_fp16: 312.0
+    peak_tflops_bf16: 312.0
+    peak_tflops_fp8: 0.0
+    peak_memory_bandwidth_gb_s: 2039.0
+    l2_cache_mb: 80.0
+    sm_count: 108
+    tensor_core_gen: "3rd"
+    compute_capability: "sm80"
+    cost_per_hour: 3.73
+
+  1x_h100:
+    label: "1x H100 (80 GB)"
+    modal_gpu: "H100"
+    gpu_count: 1
+    gpu_kind: "H100"
+    vram_gb: 80.0
+    bf16_supported: true
+    flash_attention_supported: true
+    fp8_supported: true
+    peak_tflops_fp32: 67.0
+    peak_tflops_fp16: 989.0
+    peak_tflops_bf16: 989.0
+    peak_tflops_fp8: 1979.0
+    peak_memory_bandwidth_gb_s: 3350.0
+    l2_cache_mb: 50.0
+    sm_count: 132
+    tensor_core_gen: "4th"
+    compute_capability: "sm90"
+    cost_per_hour: 6.98
+
+aliases:
+  1x_a100_80gb: 1x_a100
+  1x_a100_40gb: 1x_a100
+  1x_h100_80gb: 1x_h100
