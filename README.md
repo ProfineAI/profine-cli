@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/pypi/pyversions/profine.svg)](https://pypi.org/project/profine/)
 
-**Website: [profine.ai](https://profine.ai/)**
+**Website:** [profine.ai](https://profine.ai/) · **PyPI:** [pypi.org/project/profine](https://pypi.org/project/profine/)
 
 Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured speedups before the multi-hour run.
 
