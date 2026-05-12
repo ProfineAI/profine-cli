@@ -19,7 +19,6 @@ uv.lock
 .coverage
 .mypy_cache/
 .pypirc*
-examples/
 
 # IDE
 .idea/
@@ -45,8 +44,3 @@ examples/
 profine_output*/
 aryan-outputs/
 quickstart_out/
-# Heavy seed examples kept out of the repo (cloned locally for testing).
-# The shipped `examples/quickstart/` directory is intentionally tracked.
-examples/minGPT/
-examples/nanoGPT/
-examples/nanoGPT_stripped/
