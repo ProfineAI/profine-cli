@@ -54,8 +54,21 @@ UTIL_DROP_REG_PCT = -15.0
 
 
 def _decide_verdict(speedup_pct: float, util_delta_pct: float, correctness_passed: bool) -> str:
-    # Determine speed verdict independently of correctness
-    if speedup_pct <= SPEEDUP_REG_PCT or util_delta_pct <= UTIL_DROP_REG_PCT:
+    # Determine speed verdict independently of correctness.
+    #
+    # Util-drop only counts as a regression when throughput is NOT improving.
+    # The original rationale: "same step-time at lower util" suggests the GPU
+    # is sitting idle on something (e.g. CPU-bound dataloader regression). But
+    # a util drop alongside a clear speedup just means the optimized code does
+    # each step faster, so the GPU sits idle more between steps. That's a
+    # feature — flagging it REGRESSION misleads the user.
+    speed_regression = speedup_pct <= SPEEDUP_REG_PCT
+    util_regression = (
+        util_delta_pct <= UTIL_DROP_REG_PCT
+        and speedup_pct < SPEEDUP_PASS_PCT
+    )
+
+    if speed_regression or util_regression:
         speed = "REGRESSION"
     elif speedup_pct >= SPEEDUP_PASS_PCT:
         speed = "PASS"

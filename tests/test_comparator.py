@@ -30,9 +30,17 @@ def test_verdict_regression_threshold():
     assert _decide_verdict(SPEEDUP_REG_PCT + 0.1, 0, True) == "NO-OP"
 
 
-def test_verdict_util_drop_alone_is_regression():
-    # Even with positive speedup, large util drop means REGRESSION
-    assert _decide_verdict(speedup_pct=10.0, util_delta_pct=UTIL_DROP_REG_PCT, correctness_passed=True) == "REGRESSION"
+def test_verdict_util_drop_is_regression_only_without_speedup():
+    # Util drop with a flat speedup = REGRESSION (suspicious: GPU idle for no reason).
+    assert _decide_verdict(
+        speedup_pct=1.0, util_delta_pct=UTIL_DROP_REG_PCT, correctness_passed=True,
+    ) == "REGRESSION"
+    # Util drop with a clear speedup = PASS. The util drop is explained by the
+    # optimization finishing each step faster, leaving the GPU idle longer
+    # between steps. Flagging this as REGRESSION misleads users.
+    assert _decide_verdict(
+        speedup_pct=50.0, util_delta_pct=UTIL_DROP_REG_PCT, correctness_passed=True,
+    ) == "PASS"
 
 
 def test_verdict_no_op_band():

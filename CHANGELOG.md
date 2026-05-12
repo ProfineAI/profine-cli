@@ -2,6 +2,11 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.5] — 2026-05-12
+
+### Fixed
+- **Verdict no longer flags REGRESSION on a clear speedup with a util drop.** The old rule treated any GPU-utilization drop ≥ 15pp as REGRESSION regardless of throughput. That was wrong: when an optimization makes each step finish faster, the GPU naturally sits idle more between steps — util drops, but throughput improves. The new rule only flags util-drop as REGRESSION when speedup is *also* weak (< 3%). Concrete example: 54.9% faster + correctness PASS + GPU util −20pp now correctly verdicts as **PASS** instead of REGRESSION.
+
 ## [0.3.4] — 2026-05-12
 
 ### Fixed
