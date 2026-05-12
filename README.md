@@ -5,15 +5,13 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/pypi/pyversions/profine.svg)](https://pypi.org/project/profine/)
 
-**Website:** [profine.ai](https://profine.ai/) · **PyPI:** [pypi.org/project/profine](https://pypi.org/project/profine/)
+**Website:** [profine.ai](https://profine.ai/)
 
 Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured speedups before the multi-hour run.
 
 ## Demo
 
 ▶ [**Watch the demo on YouTube**](https://youtu.be/CY9aW1Dcrn0)
-
-[![Watch the demo](https://img.youtube.com/vi/CY9aW1Dcrn0/hqdefault.jpg)](https://youtu.be/CY9aW1Dcrn0)
 
 ## Results
 
@@ -71,7 +69,7 @@ profine run-all path/to/train.py \
   --base-url http://localhost:8000/v1
 ```
 
-**LM Studio / llama.cpp server / LiteLLM**: same pattern — point `--base-url` at the server. The endpoint can also be set via the `PROFINE_LOCAL_BASE_URL` environment variable.
+**LM Studio / llama.cpp server / LiteLLM**: point `--base-url` at the server. The endpoint can also be set via the `PROFINE_LOCAL_BASE_URL` environment variable.
 
 > Note: the agent loop expects strong instruction-following and clean JSON output. Smaller open models (≤7B) may struggle on the `interpret` and `suggest` steps; we recommend 70B-class models or higher for end-to-end reliability.
 
