@@ -1,6 +1,13 @@
 # profine
 
+**Website: [profine.ai](https://profine.ai/)**
+
 Profile and optimize PyTorch training scripts on real Modal GPUs.
+
+## Demo
+
+<!-- Replace VIDEO_ID with the YouTube video ID once published. -->
+[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
 
 ## Install
 
