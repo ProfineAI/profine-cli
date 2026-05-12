@@ -7,6 +7,8 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+from profine.cli import _console as ui
+
 
 def cmd_read(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.reader.reader import CodeReader
@@ -17,8 +19,8 @@ def cmd_read(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
 
     out = output_dir / "read"
     paths = result.save(out)
-    print(f"Architecture record: {paths['record']}")
-    print(f"Architecture brief:  {paths['brief']}")
+    ui.path("Architecture record", paths["record"])
+    ui.path("Architecture brief ", paths["brief"])
 
     if result.warnings:
         print(f"\nWarnings ({len(result.warnings)}):")
@@ -54,8 +56,8 @@ def cmd_profile(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
 
     out = output_dir / "profile"
     paths = result.save(out)
-    print(f"Profile record: {paths['record']}")
-    print(f"Profile report: {paths['report']}")
+    ui.path("Profile record", paths["record"])
+    ui.path("Profile report", paths["report"])
 
     if result.warnings:
         for w in result.warnings:
@@ -85,8 +87,8 @@ def cmd_interpret(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
 
     out = output_dir / "interpret"
     paths = result.save(out)
-    print(f"Bottleneck report: {paths['report']}")
-    print(f"Bottleneck brief:  {paths['brief']}")
+    ui.path("Bottleneck report", paths["report"])
+    ui.path("Bottleneck brief ", paths["brief"])
 
     print(f"\n{result.markdown[:500]}...")
     return 0
@@ -124,8 +126,8 @@ def cmd_suggest(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
 
     out = output_dir / "suggest"
     paths = result.save(out)
-    print(f"Suggestion report: {paths['report']}")
-    print(f"Suggestion brief:  {paths['brief']}")
+    ui.path("Suggestion report", paths["report"])
+    ui.path("Suggestion brief ", paths["brief"])
 
     print(f"\n{result.markdown[:500]}...")
     return 0
@@ -297,9 +299,9 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
 
     # Summary
     print()
-    print(f"Edited script: {edited_path}")
-    print(f"Diff:          {diff_path}")
-    print(f"Manifest:      {manifest_path}")
+    ui.path("Edited script", edited_path)
+    ui.path("Diff         ", diff_path)
+    ui.path("Manifest     ", manifest_path)
     if cumulative_extras:
         print(f"Extra files edited ({len(cumulative_extras)}):")
         for rel in sorted(cumulative_extras):
@@ -438,24 +440,31 @@ def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
         base_url=args.base_url,
         modal_config=modal_config,
     )
-    result = benchmarker.benchmark(
-        args.script,
-        optimized_source,
-        hardware=args.hardware,
-        steps=args.steps,
-        warmup_steps=args.warmup,
-        rtol=args.rtol,
-        atol=args.atol,
-        optimization_name=optimization_name,
-        optimization_category=optimization_category,
-        optimization_categories=optimization_categories,
-        overlay_files=overlay_files,
-    )
+    try:
+        result = benchmarker.benchmark(
+            args.script,
+            optimized_source,
+            hardware=args.hardware,
+            steps=args.steps,
+            warmup_steps=args.warmup,
+            rtol=args.rtol,
+            atol=args.atol,
+            optimization_name=optimization_name,
+            optimization_category=optimization_category,
+            optimization_categories=optimization_categories,
+            overlay_files=overlay_files,
+        )
+    except RuntimeError as exc:
+        # Benchmarker raises RuntimeError when baseline (or optimized) exhausts
+        # all retries — we surface that as a clean CLI error instead of a traceback,
+        # so run-all aborts with an actionable message.
+        ui.error(f"Benchmark aborted: {exc}")
+        return 1
 
     out = output_dir / "benchmark"
     paths = result.save(out)
-    print(f"Benchmark report:     {paths['report']}")
-    print(f"Benchmark comparison: {paths['comparison']}")
+    ui.path("Benchmark report    ", paths["report"])
+    ui.path("Benchmark comparison", paths["comparison"])
     if result.warnings:
         for w in result.warnings:
             print(f"  Warning: {w}")
@@ -610,9 +619,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     ]
 
     def _step_header(idx: int, name: str, desc: str) -> None:
-        print(f"\n{'='*60}")
-        print(f"  [{idx}/{len(steps)}] {desc}")
-        print(f"{'='*60}\n")
+        ui.header(desc, step=f"{idx}/{len(steps)}")
 
     # 1. Read
     _step_header(1, *steps[0])
@@ -623,7 +630,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_read(read_args, output_dir, user_prefs)
     if rc != 0:
-        print("Read failed. Aborting.")
+        ui.error("Read failed — aborting pipeline.")
         return rc
 
     # 2. Profile
@@ -638,7 +645,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_profile(profile_args, output_dir, user_prefs)
     if rc != 0:
-        print("Profile failed. Aborting.")
+        ui.error("Profile failed — aborting pipeline.")
         return rc
 
     # Check profile succeeded (not crash status)
@@ -647,7 +654,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         data = json.loads(profile_record.read_text(encoding="utf-8"))
         if data.get("status") == "crash":
             print(f"\nProfile crashed: {data.get('error', 'unknown')[:200]}")
-            print("Cannot continue without valid profile data. Aborting.")
+            ui.error("Cannot continue without valid profile data — aborting pipeline.")
             return 1
 
     # 3. Interpret
@@ -660,7 +667,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_interpret(interpret_args, output_dir, user_prefs)
     if rc != 0:
-        print("Interpret failed. Aborting.")
+        ui.error("Interpret failed — aborting pipeline.")
         return rc
 
     # 4. Suggest
@@ -674,7 +681,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_suggest(suggest_args, output_dir, user_prefs)
     if rc != 0:
-        print("Suggest failed. Aborting.")
+        ui.error("Suggest failed — aborting pipeline.")
         return rc
 
     # 5. Edit — apply all ranked candidates (or --top N)
@@ -698,7 +705,7 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_edit(edit_args, output_dir, user_prefs)
     if rc != 0:
-        print("Edit failed (no optimizations applied). Aborting.")
+        ui.error("Edit failed (no optimizations applied) — aborting pipeline.")
         return rc
 
     # 6. Benchmark
@@ -722,14 +729,15 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         from profine.cli.run_all_summary import write_summary
         summary_path = write_summary(output_dir, script, args.hardware)
         if summary_path:
-            print(f"\nSummary written to: {summary_path}")
+            ui.success(f"Summary written to: [magenta]{summary_path}[/magenta]")
     except Exception as exc:
         # Summary generation is best-effort; never fail the pipeline because of it.
         print(f"(Summary generation failed: {exc})")
 
-    print(f"\n{'='*60}")
-    print(f"  Pipeline complete. Results in: {output_dir}")
-    print(f"{'='*60}")
+    if rc == 0:
+        ui.success(f"Pipeline complete. Results in: [magenta]{output_dir}[/magenta]")
+    else:
+        ui.error(f"Pipeline finished with errors (exit {rc}). Partial results in: {output_dir}")
     return rc
 
 

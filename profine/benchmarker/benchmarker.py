@@ -162,12 +162,28 @@ class Benchmarker:
             baseline_instrumented or baseline_source, baseline_source,
             path, hw, steps, script_args, dependencies, label="baseline",
         )
+        if _is_failed_payload(baseline_payload):
+            raise RuntimeError(
+                "Baseline run failed on all retry attempts; cannot produce a benchmark "
+                "comparison. The optimized run was not attempted. Check the [baseline] "
+                "errors above — common causes: missing data files (e.g. `input.txt`), "
+                "dependencies not in requirements, or a non-deterministic crash. "
+                "If you fixed the underlying issue, re-run `profine benchmark`."
+            )
+
         print(f"  [2/2] Running optimized on {hw.name}...")
         candidate_payload = self._execute(
             optimized_instrumented or optimized_source, optimized_source,
             path, hw, steps, script_args, dependencies, label="optimized",
             overlay_files=overlay_files,
         )
+        if _is_failed_payload(candidate_payload):
+            raise RuntimeError(
+                "Optimized run failed on all retry attempts; cannot produce a benchmark "
+                "comparison. (Baseline succeeded.) The optimization may have introduced a "
+                "regression that the healer couldn't recover from. Review "
+                "`profine_output/edit/edited_train.py` and the [optimized] errors above."
+            )
 
         # Strip warmup from both
         _strip_warmup(baseline_payload, warmup_steps)
@@ -292,6 +308,20 @@ class Benchmarker:
 
         print(f"  [{label}] All attempts exhausted.")
         return {}
+
+
+def _is_failed_payload(payload: dict[str, Any] | None) -> bool:
+    """Detect when _execute exhausted retries and returned a useless payload.
+
+    A successful run returns a dict with non-empty step_times_ms. An exhausted
+    run returns {} (or a dict missing those fields). Distinguishing the two
+    matters because compare_payloads happily produces a meaningless 0%-change
+    report when given empty inputs.
+    """
+    if not payload:
+        return True
+    step_times = payload.get("step_times_ms")
+    return not step_times
 
 
 def _resolve_tolerance(

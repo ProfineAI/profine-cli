@@ -2,6 +2,15 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.2] — 2026-05-12
+
+### Added
+- **Colored CLI output** (rich-backed): stage banners, success/error/warn markers, highlighted file paths. Auto-disables when stdout isn't a TTY (so `tee run.log` stays clean) and honors the `NO_COLOR` environment variable.
+- **Karpathy's tinyshakespeare** corpus (`examples/minGPT/projects/chargpt/input.txt`, 1.1 MB) so the `chargpt` example runs out-of-the-box without external downloads.
+
+### Fixed
+- **Benchmark hard-fails when baseline crashes.** Previously, an exhausted-retry baseline produced an empty payload that was silently compared against the optimized run, yielding a meaningless `NO-OP (0% change)` verdict. Now the benchmarker raises with an actionable message and `run-all` aborts with `exit 1`.
+
 ## [0.3.1] — 2026-05-12
 
 ### Added
