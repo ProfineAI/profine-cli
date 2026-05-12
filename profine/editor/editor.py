@@ -112,6 +112,7 @@ class CodeEditor:
         provider: str = "openai",
         api_key: str | None = None,
         model: str | None = None,
+        base_url: str | None = None,
         max_heal_attempts: int = 2,
     ) -> None:
         kwargs: dict[str, Any] = {}
@@ -119,6 +120,8 @@ class CodeEditor:
             kwargs["api_key"] = api_key
         if model:
             kwargs["model"] = model
+        if base_url:
+            kwargs["base_url"] = base_url
         self._backend = create_backend(provider, **kwargs)
         self._max_heal_attempts = max_heal_attempts
 

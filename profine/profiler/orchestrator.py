@@ -79,6 +79,7 @@ class ProfileOrchestrator:
         provider: str = "openai",
         api_key: str | None = None,
         model: str | None = None,
+        base_url: str | None = None,
         modal_config: ModalRuntimeConfig | None = None,
         hf_token: str | None = None,
         max_retries: int = 3,
@@ -88,6 +89,8 @@ class ProfileOrchestrator:
             llm_kwargs["api_key"] = api_key
         if model:
             llm_kwargs["model"] = model
+        if base_url:
+            llm_kwargs["base_url"] = base_url
         self._backend = create_backend(provider, **llm_kwargs)
         self._instrumentor = ScriptInstrumentor(self._backend)
         self._modal_config = modal_config

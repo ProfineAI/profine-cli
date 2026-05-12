@@ -64,12 +64,15 @@ class ProfileInterpreter:
         provider: str = "openai",
         api_key: str | None = None,
         model: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
         if model:
             kwargs["model"] = model
+        if base_url:
+            kwargs["base_url"] = base_url
         self._backend = create_backend(provider, **kwargs)
 
     def interpret(

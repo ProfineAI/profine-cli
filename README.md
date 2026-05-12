@@ -27,7 +27,7 @@ On [Karpathy's minGPT](https://github.com/karpathy/minGPT), single-A100:
 Reproducible with some variation of (as shown in the [demo](https://youtu.be/CY9aW1Dcrn0)):
 
 ```bash
-uv run python -m profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100 --steps 25 --warmup 10
+profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100 --steps 25 --warmup 10
 ```
 
 ## Install
@@ -38,14 +38,42 @@ pip install profine
 
 Requires:
 - A [Modal](https://modal.com) account (GPU execution backend)
-- An LLM API key — **OpenAI or Anthropic only** in this release (local LLMs not yet supported; tracked in [issues](https://github.com/ProfineAI/profine-cli/issues))
+- An LLM — OpenAI, Anthropic, **or any OpenAI-compatible local server** (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
 
 ```bash
 export MODAL_TOKEN_ID=...
 export MODAL_TOKEN_SECRET=...
-export OPENAI_API_KEY=...        # or ANTHROPIC_API_KEY
-export HF_TOKEN=...              # optional, for gated models
+
+# Pick one LLM:
+export OPENAI_API_KEY=...                                  # OpenAI
+export ANTHROPIC_API_KEY=...                               # Anthropic
+# ...or run a local server (no API key needed) — see "Local LLMs" below
+
+export HF_TOKEN=...                                        # optional, for gated models
 ```
+
+### Local LLMs
+
+profine talks to any **OpenAI-compatible** server. Run with `--provider local`, supply `--model`, and (optionally) `--base-url`.
+
+**Ollama** (default endpoint `http://localhost:11434/v1`):
+```bash
+ollama serve &
+ollama pull llama3.1:8b
+profine run-all path/to/train.py --provider local --model llama3.1:8b
+```
+
+**vLLM**:
+```bash
+profine run-all path/to/train.py \
+  --provider local \
+  --model meta-llama/Llama-3.1-8B-Instruct \
+  --base-url http://localhost:8000/v1
+```
+
+**LM Studio / llama.cpp server / LiteLLM**: same pattern — point `--base-url` at the server. The endpoint can also be set via the `PROFINE_LOCAL_BASE_URL` environment variable.
+
+> Note: the agent loop expects strong instruction-following and clean JSON output. Smaller open models (≤7B) may struggle on the `interpret` and `suggest` steps; we recommend 70B-class models or higher for end-to-end reliability.
 
 ## Pipeline
 
@@ -55,7 +83,7 @@ read → profile → interpret → suggest → edit → benchmark
 
 Each step reads the previous step's output from `profine_output/`.
 
-Global flags (all commands): `--provider {openai,anthropic}` (default `openai`), `--api-key`, `--model`, `-o/--output` (default `profine_output`), `--prefs`.
+Global flags (all commands): `--provider {openai,anthropic,local}` (default `openai`), `--api-key`, `--model`, `--base-url` (for `local`), `-o/--output` (default `profine_output`), `--prefs`.
 
 ### Auto (`run-all`)
 

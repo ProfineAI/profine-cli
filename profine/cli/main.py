@@ -41,9 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
     # subcommand (e.g. `profine read train.py -o out` and
     # `profine -o out read train.py` both work).
     shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument("--provider", default="openai", help="LLM provider (openai or anthropic)")
+    shared.add_argument("--provider", default="openai",
+                        choices=["openai", "anthropic", "local"],
+                        help="LLM provider: 'openai', 'anthropic', or 'local' (OpenAI-compatible local server)")
     shared.add_argument("--api-key", default=None, help="API key override")
-    shared.add_argument("--model", default=None, help="Model name override")
+    shared.add_argument("--model", default=None, help="Model name override (required for --provider local)")
+    shared.add_argument("--base-url", default=None,
+                        help="OpenAI-compatible endpoint URL (for --provider local; defaults to "
+                             "http://localhost:11434/v1 for Ollama). Env: PROFINE_LOCAL_BASE_URL")
     shared.add_argument("--output", "-o", default="profine_output", help="Output directory")
     shared.add_argument("--prefs", default=None, help="Path to user preferences markdown")
 
@@ -157,23 +162,34 @@ def main(argv: list[str] | None = None) -> int:
         "run-all": cmd_run_all,
     }
 
-    # Check for API key before running any LLM command
-    if args.command in _LLM_COMMANDS and not args.api_key:
+    # Check for API key before running any LLM command. The "local" provider talks
+    # to an OpenAI-compatible local server (Ollama, vLLM, LM Studio, ...) — no key
+    # required, but --model is.
+    if args.command in _LLM_COMMANDS:
         provider = args.provider
-        if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
-            print("Error: No OpenAI API key found.\n")
-            print("Set it with one of:")
-            print("  export OPENAI_API_KEY=sk-...")
-            print("  python -m profine --api-key sk-... <command>")
-            print("\nOr switch to Anthropic with --provider anthropic")
-            return 1
-        if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
-            print("Error: No Anthropic API key found.\n")
-            print("Set it with one of:")
-            print("  export ANTHROPIC_API_KEY=sk-ant-...")
-            print("  python -m profine --api-key sk-ant-... <command>")
-            print("\nOr switch to OpenAI with --provider openai")
-            return 1
+        if provider == "local":
+            if not args.model:
+                print("Error: --provider local requires --model.\n")
+                print("Examples:")
+                print("  profine --provider local --model llama3.1:8b <command>            # Ollama")
+                print("  profine --provider local --model meta-llama/Llama-3.1-8B-Instruct \\")
+                print("          --base-url http://localhost:8000/v1 <command>             # vLLM")
+                return 1
+        elif not args.api_key:
+            if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+                print("Error: No OpenAI API key found.\n")
+                print("Set it with one of:")
+                print("  export OPENAI_API_KEY=sk-...")
+                print("  python -m profine --api-key sk-... <command>")
+                print("\nOr switch to Anthropic (--provider anthropic) or a local LLM (--provider local).")
+                return 1
+            if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+                print("Error: No Anthropic API key found.\n")
+                print("Set it with one of:")
+                print("  export ANTHROPIC_API_KEY=sk-ant-...")
+                print("  python -m profine --api-key sk-ant-... <command>")
+                print("\nOr switch to OpenAI (--provider openai) or a local LLM (--provider local).")
+                return 1
 
     handler = dispatch[args.command]
     try:

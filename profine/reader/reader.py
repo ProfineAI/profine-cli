@@ -71,6 +71,7 @@ class CodeReader:
         provider: str = "openai",
         api_key: str | None = None,
         model: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         self.provider = provider
         self._llm_kwargs: dict[str, Any] = {}
@@ -78,6 +79,8 @@ class CodeReader:
             self._llm_kwargs["api_key"] = api_key
         if model:
             self._llm_kwargs["model"] = model
+        if base_url:
+            self._llm_kwargs["base_url"] = base_url
 
     def read(
         self,
