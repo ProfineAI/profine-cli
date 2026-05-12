@@ -65,3 +65,7 @@ class CatalogEntry:
 
     # Addressable bottleneck categories
     addresses_bottlenecks: list[str] = field(default_factory=list)
+
+    # Mutual exclusivity — entries sharing the same non-zero group
+    # cannot both be applied in a single --top N stacked edit.
+    exclusive_group: int = 0

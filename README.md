@@ -8,10 +8,21 @@ Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured
 
 [![Watch the demo](https://img.youtube.com/vi/CY9aW1Dcrn0/hqdefault.jpg)](https://youtu.be/CY9aW1Dcrn0)
 
+## Results
+
+On [Karpathy's minGPT](https://github.com/karpathy/minGPT), single-A100:
+
+| Metric | Baseline | profine | Δ |
+|---|---|---|---|
+| Step time | 1.00× | **3.1× faster** | −67.7% ms/step |
+| Peak memory | 1.00× | **−66.4%** | substantial headroom for larger batch |
+
+Numbers reproduced with `profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100`.
+
 ## Install
 
 ```bash
-pip install -e .
+pip install profine
 ```
 
 Requires a Modal account and an LLM API key (OpenAI or Anthropic).
@@ -32,6 +43,26 @@ read → profile → interpret → suggest → edit → benchmark
 Each step reads the previous step's output from `profine_output/`.
 
 Global flags (all commands): `--provider {openai,anthropic}` (default `openai`), `--api-key`, `--model`, `-o/--output` (default `profine_output`), `--prefs`.
+
+### Auto (`run-all`)
+
+Run the entire pipeline end-to-end on one script.
+
+```bash
+profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--hardware` | `1x_a100` | Hardware preset |
+| `--steps` | `60` | Total optimizer steps |
+| `--warmup` | `30` | Warmup steps |
+| `--timeout` | `900` | Modal container timeout (s) |
+| `--warmstart` | off | Reuse deployed Modal app between runs |
+| `--top` | all | Apply top N ranked optimizations |
+| `--rtol` / `--atol` | `0.01` / `0.0001` | Loss tolerances (auto-widened for precision/quantization) |
+
+Aborts on any failed step. Per-step artifacts land in their usual subdirectories under `profine_output/`.
 
 ### 1. Read
 

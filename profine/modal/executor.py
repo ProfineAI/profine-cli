@@ -46,6 +46,23 @@ class ExecutionResult:
     runtime_seconds: float = 0.0
 
 
+def _ensure_utf8_stdout() -> None:
+    """Reconfigure local stdout/stderr to UTF-8 on Windows.
+
+    Modal streams container output to the local terminal. If the
+    container prints Unicode (e.g. ✓ from transformers), this fails
+    on Windows with charmap encoding.
+    """
+    import sys
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 class ModalExecutor:
     """Runs profiler scripts on Modal GPUs."""
 
@@ -82,6 +99,7 @@ class ModalExecutor:
         Returns:
             ExecutionResult with parsed payload or error info.
         """
+        _ensure_utf8_stdout()
         try:
             import modal
         except ImportError:
@@ -325,15 +343,31 @@ def _remote_execute(
         if p not in sys.path:
             sys.path.insert(0, p)
 
-    # Capture stdout
+    # Force UTF-8 stdout to avoid charmap encoding errors from
+    # Unicode characters (e.g. ✓) in library output
     import io
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+    # Capture stdout
     captured = io.StringIO()
     old_stdout = sys.stdout
     # Use a tee: write to both captured and original stdout
     class Tee:
         def write(self, data):
             captured.write(data)
-            old_stdout.write(data)
+            try:
+                old_stdout.write(data)
+            except UnicodeEncodeError:
+                old_stdout.write(data.encode("utf-8", errors="replace").decode("ascii", errors="replace"))
         def flush(self):
             captured.flush()
             old_stdout.flush()

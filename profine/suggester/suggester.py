@@ -172,6 +172,7 @@ def _parse_response(
                 estimated_effort=c.get("estimated_effort", ""),
                 evidence=[{"kind": e.kind, "ref": e.ref, "url": e.url}
                           for e in entry.evidence],
+                exclusive_group=entry.exclusive_group,
             ),
         ))
 
@@ -219,7 +220,8 @@ def _generate_markdown(
 
     for c in report.candidates:
         priority_badge = {"critical": "!!!", "high": "!!", "medium": "!", "low": ""}.get(c.priority, "")
-        lines.append(f"### #{c.rank} {c.name} [{c.category}] {priority_badge}")
+        excl_badge = f" (excl:{c.exclusive_group})" if c.exclusive_group else ""
+        lines.append(f"### #{c.rank} {c.name} [{c.category}]{excl_badge} {priority_badge}")
         lines.append("")
         lines.append(f"**Priority:** {c.priority} | "
                       f"**Speedup:** {c.est_speedup_low_pct:.0f}%-{c.est_speedup_high_pct:.0f}% | "

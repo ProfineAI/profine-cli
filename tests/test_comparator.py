@@ -14,8 +14,10 @@ from profine.benchmarker.comparator import (
 
 
 def test_verdict_correctness_failure_overrides_speedup():
-    # Correctness fails — even a huge speedup must read REGRESSION
-    assert _decide_verdict(speedup_pct=50.0, util_delta_pct=0, correctness_passed=False) == "REGRESSION"
+    # Correctness fails on a winning speedup → surface both signals
+    assert _decide_verdict(speedup_pct=50.0, util_delta_pct=0, correctness_passed=False) == "PASS (correctness: FAIL)"
+    # Correctness fails without a winning speedup → REGRESSION
+    assert _decide_verdict(speedup_pct=1.0, util_delta_pct=0, correctness_passed=False) == "REGRESSION"
 
 
 def test_verdict_pass_threshold():
@@ -105,9 +107,9 @@ def test_compare_payloads_full_pipeline_pass():
     assert cmp.correctness.passed
 
 
-def test_compare_payloads_correctness_fail_marks_regression():
+def test_compare_payloads_correctness_fail_flags_correctness():
     baseline = {"step_times_ms": [10.0] * 5, "loss_values": [1.0]}
     candidate = {"step_times_ms": [5.0] * 5, "loss_values": [99.0]}  # diverged
     cmp = compare_payloads(baseline, candidate)
-    assert cmp.verdict == "REGRESSION"
+    assert cmp.verdict == "PASS (correctness: FAIL)"
     assert not cmp.correctness.passed

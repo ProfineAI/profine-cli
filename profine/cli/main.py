@@ -27,12 +27,13 @@ from profine.cli.commands import (
     cmd_suggest,
     cmd_edit,
     cmd_benchmark,
+    cmd_run_all,
 )
 from profine.cli.errors import is_debug_mode, print_user_error
 from profine.config.settings import DEFAULTS
 
 # Commands that require an LLM backend
-_LLM_COMMANDS = {"read", "profile", "interpret", "suggest", "edit", "benchmark"}
+_LLM_COMMANDS = {"read", "profile", "interpret", "suggest", "edit", "benchmark", "run-all"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # edit
     p_edit = sub.add_parser("edit", help="Apply an optimization to the source", parents=[shared], conflict_handler="resolve")
-    p_edit.add_argument("script", help="Path to the training script")
+    p_edit.add_argument("script", nargs="?", default=None, help="Path to the training script (auto-detected from prior steps if omitted)")
     p_edit.add_argument("--suggestion-dir", required=True, help="Directory with suggestion output")
     p_edit.add_argument("--optimization", default=None, help="Optimization ID to apply (default: top-ranked)")
     p_edit.add_argument("--top", type=int, default=None,
@@ -91,8 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # benchmark
     p_bench = sub.add_parser("benchmark", help="Benchmark original vs. optimized", parents=[shared], conflict_handler="resolve")
-    p_bench.add_argument("script", help="Path to the original training script")
-    p_bench.add_argument("--optimized", required=True, help="Path to the optimized script")
+    p_bench.add_argument("script", nargs="?", default=None, help="Path to the original training script (auto-detected from prior steps if omitted)")
+    p_bench.add_argument("--optimized", default=None, help="Path to the optimized script (default: <output>/edit/edited_train.py)")
     p_bench.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
     p_bench.add_argument("--steps", type=int, default=DEFAULTS.default_steps, help="Total steps")
     p_bench.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps, help="Warmup steps")
@@ -106,6 +107,21 @@ def build_parser() -> argparse.ArgumentParser:
                                "Extra files under <edit-dir>/files/ are overlaid onto the "
                                "Modal workspace before the optimized run, so multi-file "
                                "edits actually take effect.")
+
+    # run-all
+    p_all = sub.add_parser("run-all", help="Run the full pipeline: read → profile → interpret → suggest → edit → benchmark",
+                           parents=[shared], conflict_handler="resolve")
+    p_all.add_argument("script", help="Path to the training script")
+    p_all.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
+    p_all.add_argument("--steps", type=int, default=DEFAULTS.default_steps, help="Total steps")
+    p_all.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps, help="Warmup steps")
+    p_all.add_argument("--timeout", type=int, default=DEFAULTS.default_modal_timeout,
+                       help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
+    p_all.add_argument("--warmstart", action="store_true", help="Reuse deployed Modal app between runs")
+    p_all.add_argument("--top", type=int, default=None,
+                       help="Apply top N optimizations (default: all ranked candidates)")
+    p_all.add_argument("--rtol", type=float, default=1e-2, help="Loss relative tolerance for correctness")
+    p_all.add_argument("--atol", type=float, default=1e-4, help="Loss absolute tolerance for correctness")
 
     return parser
 
@@ -138,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         "suggest": cmd_suggest,
         "edit": cmd_edit,
         "benchmark": cmd_benchmark,
+        "run-all": cmd_run_all,
     }
 
     # Check for API key before running any LLM command

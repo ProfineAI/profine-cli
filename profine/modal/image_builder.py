@@ -108,10 +108,12 @@ class ModalImageBuilder:
                 extra_options="--no-build-isolation",
             )
 
-        # HuggingFace cache env
+        # HuggingFace cache env + force UTF-8 to avoid charmap
+        # encoding errors from Unicode characters in library output
         image = image.env({
             "HF_HOME": HF_CACHE_MOUNT,
             "TRANSFORMERS_CACHE": f"{HF_CACHE_MOUNT}/hub",
+            "PYTHONIOENCODING": "utf-8",
         })
         if hf_token:
             image = image.env({"HF_TOKEN": hf_token})

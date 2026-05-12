@@ -50,6 +50,7 @@ def _build_entry(raw: dict) -> CatalogEntry:
         evidence=evidence,
         code_pattern=raw.get("code_pattern", "").strip(),
         addresses_bottlenecks=raw.get("addresses_bottlenecks", []),
+        exclusive_group=raw.get("exclusive_group", 0),
     )
 
 

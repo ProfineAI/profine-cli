@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -110,6 +111,14 @@ class CodeReader:
         # Inject script_path into record
         record["script_path"] = str(path)
 
+        # Step 2.5: Enrich with HF Hub ground truth
+        model_id = _extract_model_id(record)
+        if model_id:
+            from profine.reader.hf_config import enrich_record
+            upgraded = enrich_record(record, model_id)
+            if upgraded:
+                print(f"  HF Hub enrichment: upgraded {', '.join(upgraded)}")
+
         # Step 3: collect warnings for guessed fields
         warnings = _collect_warnings(record)
 
@@ -120,6 +129,41 @@ class CodeReader:
             source=source,
             warnings=warnings,
         )
+
+
+def _extract_model_id(record: dict[str, Any]) -> str | None:
+    """Extract a HuggingFace model ID from the architecture record.
+
+    Checks model_variable.value first, then scans evidence snippets
+    for an org/model pattern (the LLM sometimes puts the Python variable
+    name in value rather than the HF model ID string).
+    """
+    from profine.reader.hf_config import is_hf_model_id
+
+    # Direct value check
+    model_var = record.get("model_variable", {})
+    if isinstance(model_var, dict):
+        value = model_var.get("value", "")
+        if isinstance(value, str) and is_hf_model_id(value):
+            return value
+        # Scan evidence snippets for a model ID
+        for ev in model_var.get("evidence", []):
+            snippet = ev.get("snippet", "")
+            for match in re.findall(r'["\']([A-Za-z0-9_-]+/[A-Za-z0-9._-]+)["\']', snippet):
+                if is_hf_model_id(match):
+                    return match
+
+    # Fallback: check model_class or model_family evidence
+    for field in ("model_class", "model_family"):
+        obj = record.get(field, {})
+        if isinstance(obj, dict):
+            for ev in obj.get("evidence", []):
+                snippet = ev.get("snippet", "")
+                for match in re.findall(r'["\']([A-Za-z0-9_-]+/[A-Za-z0-9._-]+)["\']', snippet):
+                    if is_hf_model_id(match):
+                        return match
+
+    return None
 
 
 def _collect_warnings(record: dict[str, Any]) -> list[str]:

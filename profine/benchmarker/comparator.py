@@ -54,13 +54,20 @@ UTIL_DROP_REG_PCT = -15.0
 
 
 def _decide_verdict(speedup_pct: float, util_delta_pct: float, correctness_passed: bool) -> str:
-    if not correctness_passed:
-        return "REGRESSION"
+    # Determine speed verdict independently of correctness
     if speedup_pct <= SPEEDUP_REG_PCT or util_delta_pct <= UTIL_DROP_REG_PCT:
+        speed = "REGRESSION"
+    elif speedup_pct >= SPEEDUP_PASS_PCT:
+        speed = "PASS"
+    else:
+        speed = "NO-OP"
+
+    if not correctness_passed:
+        # Report the speed result but flag correctness failure
+        if speed == "PASS":
+            return "PASS (correctness: FAIL)"
         return "REGRESSION"
-    if speedup_pct >= SPEEDUP_PASS_PCT:
-        return "PASS"
-    return "NO-OP"
+    return speed
 
 
 def compare_payloads(

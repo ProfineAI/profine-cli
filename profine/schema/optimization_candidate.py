@@ -39,6 +39,10 @@ class OptimizationCandidate:
     # Evidence
     evidence: list[dict[str, Any]] = field(default_factory=list)
 
+    # Mutual exclusivity — non-zero means this candidate conflicts with
+    # others sharing the same group number.
+    exclusive_group: int = 0
+
 
 @dataclass(slots=True)
 class SuggestionReport:

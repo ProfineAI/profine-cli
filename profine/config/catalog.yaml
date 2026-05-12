@@ -1,10 +1,18 @@
 # Optimization catalog — each entry describes an applicable optimization
 # with conditions, expected speedup, risks, and implementation hints.
 
+# Exclusive groups — entries sharing a group number cannot be stacked.
+#   1: attention impl (flash_attention_2, sdpa)
+#   2: precision (bf16_mixed_precision, fp16_mixed_precision)
+#   3: compiler (torch_compile, torch_compile_max_autotune, torch_compile_max_autotune_no_cudagraphs)
+#   4: optimizer variant (fused_adamw, foreach_adamw, adamw_8bit_bnb, paged_adamw_bnb)
+#   5: distributed (ddp, fsdp)
+
 entries:
   # Attention
   - id: flash_attention_2
     category: attention
+    exclusive_group: 1
     name: FlashAttention-2
     description: >
       Fused, IO-aware attention kernel that avoids materializing the full
@@ -46,6 +54,7 @@ entries:
 
   - id: sdpa
     category: attention
+    exclusive_group: 1
     name: Scaled Dot Product Attention (SDPA)
     description: >
       PyTorch's built-in fused attention that auto-selects the best backend
@@ -76,6 +85,7 @@ entries:
   # Precision
   - id: bf16_mixed_precision
     category: precision
+    exclusive_group: 2
     name: BF16 Mixed Precision
     description: >
       Train in bfloat16 with torch.autocast. Halves memory for activations,
@@ -104,6 +114,7 @@ entries:
 
   - id: fp16_mixed_precision
     category: precision
+    exclusive_group: 2
     name: FP16 Mixed Precision with GradScaler
     description: >
       Train in float16 with torch.autocast + GradScaler for loss scaling.
@@ -157,6 +168,7 @@ entries:
   # Compiler
   - id: torch_compile
     category: compiler
+    exclusive_group: 3
     name: torch.compile
     description: >
       JIT compile the model with torch.compile for kernel fusion and optimization.
@@ -184,6 +196,7 @@ entries:
 
   - id: torch_compile_max_autotune
     category: compiler
+    exclusive_group: 3
     name: "torch.compile mode='max-autotune'"
     description: >
       torch.compile with max-autotune benchmarks multiple kernel implementations
@@ -216,6 +229,7 @@ entries:
 
   - id: torch_compile_max_autotune_no_cudagraphs
     category: compiler
+    exclusive_group: 3
     name: "torch.compile mode='max-autotune-no-cudagraphs'"
     description: >
       max-autotune kernel selection without CUDAGraphs. Same kernel-level
@@ -294,6 +308,7 @@ entries:
   # Optimizer
   - id: fused_adamw
     category: optimizer
+    exclusive_group: 4
     name: Fused AdamW
     description: >
       Single CUDA kernel for the entire Adam update step. Reduces kernel
@@ -324,6 +339,7 @@ entries:
 
   - id: foreach_adamw
     category: optimizer
+    exclusive_group: 4
     name: Foreach AdamW
     description: >
       Batched parameter update using foreach ops. Fewer kernel launches
@@ -352,6 +368,7 @@ entries:
 
   - id: adamw_8bit_bnb
     category: optimizer
+    exclusive_group: 4
     name: 8-bit AdamW (bitsandbytes)
     description: >
       Replace AdamW with bitsandbytes.optim.AdamW8bit. Quantizes optimizer
@@ -378,6 +395,7 @@ entries:
 
   - id: paged_adamw_bnb
     category: optimizer
+    exclusive_group: 4
     name: Paged AdamW (bitsandbytes)
     description: >
       Use bitsandbytes paged AdamW (PagedAdamW32bit / PagedAdamW8bit) which
@@ -443,6 +461,7 @@ entries:
   # Distributed
   - id: ddp
     category: distributed
+    exclusive_group: 5
     name: DistributedDataParallel (DDP)
     description: >
       Replace DataParallel with DDP for efficient multi-GPU training.
@@ -467,6 +486,7 @@ entries:
 
   - id: fsdp
     category: distributed
+    exclusive_group: 5
     name: Fully Sharded Data Parallel (FSDP)
     description: >
       Shard model parameters, gradients, and optimizer states across GPUs.

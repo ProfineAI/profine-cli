@@ -133,6 +133,15 @@ def cmd_suggest(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
 def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.editor.editor import CodeEditor
 
+    # Auto-detect script path from prior steps if not provided
+    if not args.script:
+        args.script = _auto_detect_script(output_dir)
+        if not args.script:
+            print("Error: no script specified and could not auto-detect from output directory.\n"
+                  "Either pass the script path or run `profine read` first.")
+            return 1
+        print(f"Auto-detected script: {args.script}")
+
     suggestion_dir = Path(args.suggestion_dir)
     report_path = suggestion_dir / "suggestion_report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -190,6 +199,7 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     current_source = source
     cumulative_extras: dict[str, str] = {}  # path -> latest edited source
     applied_ids: list[str] = []
+    applied_exclusive_groups: set[int] = set()  # track which groups are taken
     skipped: list[tuple[str, str]] = []     # (entry_id, reason)
     all_warnings: list[str] = []
     last_explanation = ""
@@ -197,6 +207,16 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     for i, target_dict in enumerate(targets, start=1):
         candidate = _dict_to_candidate(target_dict)
         prefix = f"[{i}/{len(targets)}] " if len(targets) > 1 else ""
+
+        # Skip if an entry from the same exclusive group was already applied
+        excl_group = target_dict.get("exclusive_group", 0)
+        if excl_group and excl_group in applied_exclusive_groups:
+            reason = (f"exclusive group {excl_group} — "
+                      f"conflicts with already-applied optimization")
+            skipped.append((candidate.entry_id, reason))
+            print(f"{prefix}Skipped {candidate.name}: {reason}")
+            continue
+
         print(f"{prefix}Applying optimization: {candidate.name}...")
 
         # Layer cumulative edits over the discovered baseline modules
@@ -223,6 +243,8 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
             for fe in result.extra_file_edits:
                 cumulative_extras[fe.path] = fe.edited_source
             applied_ids.append(candidate.entry_id)
+            if excl_group:
+                applied_exclusive_groups.add(excl_group)
             last_explanation = result.explanation
             print(f"  applied. (entry diff: {_diff_line_count(result.diff)} lines, "
                   f"extra files: {len(result.extra_file_edits)})")
@@ -323,12 +345,41 @@ def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
     from profine.schema.hardware import ModalRuntimeConfig
     from profine.config.settings import DEFAULTS
 
+    # Auto-detect script path from prior steps if not provided
+    if not args.script:
+        args.script = _auto_detect_script(output_dir)
+        if not args.script:
+            print("Error: no script specified and could not auto-detect from output directory.\n"
+                  "Either pass the script path or run `profine read` first.")
+            return 1
+        print(f"Auto-detected script: {args.script}")
+
+    # Auto-detect optimized script from edit output if not provided
+    if not args.optimized:
+        default_optimized = output_dir / "edit" / "edited_train.py"
+        if default_optimized.exists():
+            args.optimized = str(default_optimized)
+            print(f"Auto-detected optimized script: {args.optimized}")
+        else:
+            print("Error: no --optimized script specified and "
+                  f"{default_optimized} does not exist.\n"
+                  "Run `profine edit` first or pass --optimized explicitly.")
+            return 1
+
+    optimized_path = Path(args.optimized)
+    if not optimized_path.is_file():
+        print(f"Error: '{args.optimized}' is not a file."
+              + (" Did you mean to pass the edited script, e.g. "
+                 f"'{args.optimized}/edited_train.py'?"
+                 if optimized_path.is_dir() else ""))
+        return 1
+
     timeout = getattr(args, "timeout", DEFAULTS.default_modal_timeout)
     modal_config = ModalRuntimeConfig(timeout_seconds=timeout)
     if getattr(args, "warmstart", False):
         modal_config.enable_warmstart = True
 
-    optimized_source = Path(args.optimized).read_text(encoding="utf-8")
+    optimized_source = optimized_path.read_text(encoding="utf-8")
 
     # Pick up multi-file editor output: any patched library modules
     # under <edit-dir>/files/ are overlaid onto the Modal workspace at
@@ -542,3 +593,137 @@ def _dict_to_candidate(d: dict[str, Any]) -> Any:
         code_pattern=d.get("code_pattern", ""),
         estimated_effort=d.get("estimated_effort", ""),
     )
+
+
+def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    """Run the full pipeline: read → profile → interpret → suggest → edit → benchmark."""
+    script = args.script
+    steps = [
+        ("read", "Reading script"),
+        ("profile", "Profiling on Modal"),
+        ("interpret", "Interpreting bottlenecks"),
+        ("suggest", "Suggesting optimizations"),
+        ("edit", "Applying optimizations"),
+        ("benchmark", "Benchmarking"),
+    ]
+
+    def _step_header(idx: int, name: str, desc: str) -> None:
+        print(f"\n{'='*60}")
+        print(f"  [{idx}/{len(steps)}] {desc}")
+        print(f"{'='*60}\n")
+
+    # 1. Read
+    _step_header(1, *steps[0])
+    read_args = Namespace(
+        script=script, provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_read(read_args, output_dir, user_prefs)
+    if rc != 0:
+        print("Read failed. Aborting.")
+        return rc
+
+    # 2. Profile
+    _step_header(2, *steps[1])
+    profile_args = Namespace(
+        script=script, hardware=args.hardware, steps=args.steps,
+        warmup=args.warmup, timeout=args.timeout,
+        warmstart=getattr(args, "warmstart", False),
+        provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_profile(profile_args, output_dir, user_prefs)
+    if rc != 0:
+        print("Profile failed. Aborting.")
+        return rc
+
+    # Check profile succeeded (not crash status)
+    profile_record = output_dir / "profile" / "profile_record.json"
+    if profile_record.exists():
+        data = json.loads(profile_record.read_text(encoding="utf-8"))
+        if data.get("status") == "crash":
+            print(f"\nProfile crashed: {data.get('error', 'unknown')[:200]}")
+            print("Cannot continue without valid profile data. Aborting.")
+            return 1
+
+    # 3. Interpret
+    _step_header(3, *steps[2])
+    interpret_args = Namespace(
+        profile_dir=str(output_dir / "profile"),
+        provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_interpret(interpret_args, output_dir, user_prefs)
+    if rc != 0:
+        print("Interpret failed. Aborting.")
+        return rc
+
+    # 4. Suggest
+    _step_header(4, *steps[3])
+    suggest_args = Namespace(
+        interpret_dir=str(output_dir / "interpret"),
+        arch_dir=None, profile_dir=None,
+        provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_suggest(suggest_args, output_dir, user_prefs)
+    if rc != 0:
+        print("Suggest failed. Aborting.")
+        return rc
+
+    # 5. Edit — apply all ranked candidates (or --top N)
+    _step_header(5, *steps[4])
+    top_n = getattr(args, "top", None)
+    if top_n is None:
+        # Default: apply all ranked candidates
+        sugg_path = output_dir / "suggest" / "suggestion_report.json"
+        if sugg_path.exists():
+            sugg = json.loads(sugg_path.read_text(encoding="utf-8"))
+            top_n = len(sugg.get("candidates", []))
+        else:
+            top_n = 10
+    edit_args = Namespace(
+        script=script,
+        suggestion_dir=str(output_dir / "suggest"),
+        optimization=None, top=top_n,
+        provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_edit(edit_args, output_dir, user_prefs)
+    if rc != 0:
+        print("Edit failed (no optimizations applied). Aborting.")
+        return rc
+
+    # 6. Benchmark
+    _step_header(6, *steps[5])
+    benchmark_args = Namespace(
+        script=script,
+        optimized=str(output_dir / "edit" / "edited_train.py"),
+        hardware=args.hardware, steps=args.steps, warmup=args.warmup,
+        rtol=getattr(args, "rtol", 1e-2), atol=getattr(args, "atol", 1e-4),
+        timeout=args.timeout,
+        warmstart=getattr(args, "warmstart", False),
+        edit_dir=None,
+        provider=args.provider, api_key=args.api_key,
+        model=args.model, output=args.output, prefs=args.prefs,
+    )
+    rc = cmd_benchmark(benchmark_args, output_dir, user_prefs)
+
+    print(f"\n{'='*60}")
+    print(f"  Pipeline complete. Results in: {output_dir}")
+    print(f"{'='*60}")
+    return rc
+
+
+def _auto_detect_script(output_dir: Path) -> str | None:
+    """Try to find script_path from read or profile output."""
+    for sub in ("read/architecture_record.json", "profile/profile_record.json"):
+        path = output_dir / sub
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if data.get("script_path"):
+                    return data["script_path"]
+            except (json.JSONDecodeError, KeyError):
+                continue
+    return None
