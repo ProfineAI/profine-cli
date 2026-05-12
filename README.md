@@ -1,5 +1,10 @@
 # profine
 
+[![PyPI](https://img.shields.io/pypi/v/profine.svg)](https://pypi.org/project/profine/)
+[![CI](https://github.com/ProfineAI/profine-cli/actions/workflows/test.yml/badge.svg)](https://github.com/ProfineAI/profine-cli/actions/workflows/test.yml)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/pypi/pyversions/profine.svg)](https://pypi.org/project/profine/)
+
 **Website: [profine.ai](https://profine.ai/)**
 
 Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured speedups before the multi-hour run.
@@ -17,7 +22,11 @@ On [Karpathy's minGPT](https://github.com/karpathy/minGPT), single-A100:
 | Step time | 1.00× | **3.1× faster** | −67.7% ms/step |
 | Peak memory | 1.00× | **−66.4%** | substantial headroom for larger batch |
 
-Numbers reproduced with `profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100`.
+Reproducible with some variation of (as shown in the [demo](https://youtu.be/CY9aW1Dcrn0)):
+
+```bash
+uv run python -m profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100 --steps 25 --warmup 10
+```
 
 ## Install
 
@@ -25,7 +34,9 @@ Numbers reproduced with `profine run-all examples/minGPT/projects/chargpt/chargp
 pip install profine
 ```
 
-Requires a Modal account and an LLM API key (OpenAI or Anthropic).
+Requires:
+- A [Modal](https://modal.com) account (GPU execution backend)
+- An LLM API key — **OpenAI or Anthropic only** in this release (local LLMs not yet supported; tracked in [issues](https://github.com/ProfineAI/profine-cli/issues))
 
 ```bash
 export MODAL_TOKEN_ID=...
