@@ -11,6 +11,8 @@ Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured
 
 ## Demo
 
+▶ [**Watch the demo on YouTube**](https://youtu.be/CY9aW1Dcrn0)
+
 [![Watch the demo](https://img.youtube.com/vi/CY9aW1Dcrn0/hqdefault.jpg)](https://youtu.be/CY9aW1Dcrn0)
 
 ## Results
