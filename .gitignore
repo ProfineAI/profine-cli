@@ -37,6 +37,9 @@ uv.lock
 # Claude
 .claude/
 
+# Jupyter
+.ipynb_checkpoints/
+
 # profine
 .profine/
 .profine_tmp/
@@ -47,7 +50,6 @@ profine_output*/
 !examples/minGPT/profine_output/
 !examples/minGPT/profine_output/**
 quickstart_out/
-dist/
 
 # profine-output _debug dumps (per-run, not for the repo)
 examples/**/profine_output/_debug/
