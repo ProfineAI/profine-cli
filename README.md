@@ -171,10 +171,12 @@ Defined in `profine/config/hardware.yaml`.
 | Preset | GPU | VRAM | Cost/hr |
 |---|---|---|---|
 | `1x_t4` | T4 | 16 GB | $0.59 |
-| `1x_l4` | L4 | 24 GB | $0.73 |
+| `1x_l4` | L4 | 24 GB | $0.80 |
 | `1x_a10g` | A10G | 24 GB | $1.10 |
-| `1x_a100` | A100 | 80 GB | $3.73 |
-| `1x_h100` | H100 | 80 GB | $6.98 |
+| `1x_a100` | A100 | 80 GB | $2.50 |
+| `1x_h100` | H100 | 80 GB | $3.95 |
+
+Prices from [modal.com/pricing](https://modal.com/pricing).
 
 All data tables (hardware, optimization catalog, kernel patterns, extractor patterns) live in `profine/config/*.yaml` and can be extended without code changes.
 

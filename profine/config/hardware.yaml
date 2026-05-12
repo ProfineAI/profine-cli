@@ -33,7 +33,7 @@ presets:
     peak_tflops_fp8: 0.0
     peak_memory_bandwidth_gb_s: 300.0
     compute_capability: "sm89"
-    cost_per_hour: 0.73
+    cost_per_hour: 0.80
 
   1x_a10g:
     label: "1x A10G (24 GB)"
@@ -70,7 +70,7 @@ presets:
     sm_count: 108
     tensor_core_gen: "3rd"
     compute_capability: "sm80"
-    cost_per_hour: 3.73
+    cost_per_hour: 2.50
 
   1x_h100:
     label: "1x H100 (80 GB)"
@@ -90,7 +90,7 @@ presets:
     sm_count: 132
     tensor_core_gen: "4th"
     compute_capability: "sm90"
-    cost_per_hour: 6.98
+    cost_per_hour: 3.95
 
 aliases:
   1x_a100_80gb: 1x_a100
