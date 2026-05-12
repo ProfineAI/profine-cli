@@ -49,6 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
     shared.add_argument("--base-url", default=None,
                         help="OpenAI-compatible endpoint URL (for --provider local; defaults to "
                              "http://localhost:11434/v1 for Ollama). Env: PROFINE_LOCAL_BASE_URL")
+    shared.add_argument("--seed", type=int, default=None,
+                        help="Seed for the LLM provider (best-effort; OpenAI honors it, Anthropic "
+                             "ignores it and relies on temperature=0). Use to make optimization "
+                             "rankings reproducible across runs.")
     shared.add_argument("--output", "-o", default="profine_output", help="Output directory")
     shared.add_argument("--prefs", default=None, help="Path to user preferences markdown")
 

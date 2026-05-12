@@ -113,6 +113,7 @@ class CodeEditor:
         api_key: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        seed: int | None = None,
         max_heal_attempts: int = 2,
     ) -> None:
         kwargs: dict[str, Any] = {}
@@ -122,6 +123,8 @@ class CodeEditor:
             kwargs["model"] = model
         if base_url:
             kwargs["base_url"] = base_url
+        if seed is not None:
+            kwargs["seed"] = seed
         self._backend = create_backend(provider, **kwargs)
         self._max_heal_attempts = max_heal_attempts
 

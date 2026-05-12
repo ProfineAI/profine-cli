@@ -7,6 +7,8 @@ from typing import Any
 
 _DEFAULT_TIMEOUT = 120  # seconds
 _DEFAULT_MAX_OUTPUT_TOKENS = 32768
+_DEFAULT_TEMPERATURE = 0.0  # deterministic by default; pass temperature=… to override
+_DEFAULT_SEED: int | None = None
 
 
 class LlmBackend:
@@ -17,20 +19,31 @@ class LlmBackend:
 
 
 class AnthropicBackend(LlmBackend):
-    def __init__(self, api_key: str | None = None, model: str = "claude-sonnet-4-6") -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-sonnet-4-6",
+        temperature: float = _DEFAULT_TEMPERATURE,
+        seed: int | None = _DEFAULT_SEED,
+    ) -> None:
         import anthropic
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not key:
             raise RuntimeError("No Anthropic API key. Set ANTHROPIC_API_KEY or pass api_key=.")
         self.client = anthropic.Anthropic(api_key=key, timeout=_DEFAULT_TIMEOUT)
         self.model = model
+        self.temperature = temperature
+        # Anthropic's API doesn't accept a seed parameter; we keep the field for
+        # parity but ignore it during the call. Temperature=0 is the closest
+        # we can get to deterministic sampling.
+        self.seed = seed
 
     def call(self, system: str, user: str) -> str:
         chunks: list[str] = []
         with self.client.messages.stream(
             model=self.model,
             max_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
-            temperature=0.2,
+            temperature=self.temperature,
             system=system,
             messages=[{"role": "user", "content": user}],
         ) as stream:
@@ -45,6 +58,8 @@ class OpenAIBackend(LlmBackend):
         api_key: str | None = None,
         model: str = "gpt-5.4-mini",
         base_url: str | None = None,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        seed: int | None = _DEFAULT_SEED,
     ) -> None:
         import openai
         key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -55,17 +70,25 @@ class OpenAIBackend(LlmBackend):
             client_kwargs["base_url"] = base_url
         self.client = openai.OpenAI(**client_kwargs)
         self.model = model
+        self.temperature = temperature
+        self.seed = seed
 
     def call(self, system: str, user: str) -> str:
-        stream = self.client.chat.completions.create(
-            model=self.model,
-            max_completion_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
-            stream=True,
-            messages=[
+        kwargs: dict[str, Any] = {
+            "model": self.model,
+            "max_completion_tokens": _DEFAULT_MAX_OUTPUT_TOKENS,
+            "stream": True,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-        )
+            "temperature": self.temperature,
+        }
+        if self.seed is not None:
+            # OpenAI's API treats `seed` as best-effort: same (model, seed,
+            # prompt) → same response when system_fingerprint is stable.
+            kwargs["seed"] = self.seed
+        stream = self.client.chat.completions.create(**kwargs)
         chunks: list[str] = []
         for chunk in stream:
             delta = chunk.choices[0].delta.content
@@ -88,6 +111,8 @@ class LocalBackend(OpenAIBackend):
         api_key: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        temperature: float = _DEFAULT_TEMPERATURE,
+        seed: int | None = _DEFAULT_SEED,
     ) -> None:
         if not model:
             raise RuntimeError(
@@ -103,7 +128,10 @@ class LocalBackend(OpenAIBackend):
         # Local servers typically ignore the key; default to a placeholder so the
         # OpenAI SDK accepts the construction.
         resolved_key = api_key or os.environ.get("OPENAI_API_KEY") or "local"
-        super().__init__(api_key=resolved_key, model=model, base_url=resolved_base)
+        super().__init__(
+            api_key=resolved_key, model=model, base_url=resolved_base,
+            temperature=temperature, seed=seed,
+        )
 
 
 def create_backend(provider: str = "openai", **kwargs: Any) -> LlmBackend:
@@ -113,10 +141,11 @@ def create_backend(provider: str = "openai", **kwargs: Any) -> LlmBackend:
       - "openai"    — OpenAI API
       - "anthropic" — Anthropic API
       - "local"     — any OpenAI-compatible local server (Ollama, vLLM, LM Studio, etc.)
+
+    All backends accept `temperature` (default 0.0) and `seed` (best-effort).
+    Anthropic ignores `seed` — its API doesn't expose one — but honors temperature=0.
     """
     if provider == "openai":
-        # base_url passthrough lets advanced users hit any OpenAI-compatible endpoint
-        # via the openai provider too (e.g. Azure, Together, Groq, Fireworks).
         return OpenAIBackend(**kwargs)
     if provider == "local":
         return LocalBackend(**kwargs)

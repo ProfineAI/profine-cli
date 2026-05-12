@@ -65,6 +65,7 @@ class ProfileInterpreter:
         api_key: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        seed: int | None = None,
     ) -> None:
         kwargs: dict[str, Any] = {}
         if api_key:
@@ -73,6 +74,8 @@ class ProfileInterpreter:
             kwargs["model"] = model
         if base_url:
             kwargs["base_url"] = base_url
+        if seed is not None:
+            kwargs["seed"] = seed
         self._backend = create_backend(provider, **kwargs)
 
     def interpret(

@@ -14,7 +14,7 @@ def cmd_read(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.reader.reader import CodeReader
 
     print(f"Reading {args.script}...")
-    reader = CodeReader(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url)
+    reader = CodeReader(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url, seed=args.seed)
     result = reader.read(args.script, debug_dir=output_dir / "_debug")
 
     out = output_dir / "read"
@@ -51,6 +51,7 @@ def cmd_profile(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         api_key=args.api_key,
         model=args.model,
         base_url=args.base_url,
+        seed=args.seed,
         modal_config=modal_config,
     )
 
@@ -82,7 +83,7 @@ def cmd_interpret(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
     profile_record = _dict_to_profile_record(record_data)
 
     print("Interpreting profile...")
-    interpreter = ProfileInterpreter(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url)
+    interpreter = ProfileInterpreter(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url, seed=args.seed)
     result = interpreter.interpret(profile_record, arch_data, user_prefs, debug_dir=output_dir / "_debug")
 
     out = output_dir / "interpret"
@@ -120,7 +121,7 @@ def cmd_suggest(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
             bottleneck_report = _dict_to_bottleneck_report(interpret_data)
 
     print("Suggesting optimizations...")
-    suggester = OptimizationSuggester(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url)
+    suggester = OptimizationSuggester(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url, seed=args.seed)
     result = suggester.suggest(arch_data, bottleneck_report, user_prefs, profile_summary,
                                 debug_dir=output_dir / "_debug")
 
@@ -193,7 +194,7 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     except ValueError:
         entry_rel = script_path.name
 
-    editor = CodeEditor(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url)
+    editor = CodeEditor(provider=args.provider, api_key=args.api_key, model=args.model, base_url=args.base_url, seed=args.seed)
     out = output_dir / "edit"
 
     # Stacked-edit state. Each iteration sees the cumulative result so
@@ -438,6 +439,7 @@ def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
     benchmarker = Benchmarker(
         provider=args.provider, api_key=args.api_key, model=args.model,
         base_url=args.base_url,
+        seed=args.seed,
         modal_config=modal_config,
     )
     try:
@@ -626,7 +628,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     read_args = Namespace(
         script=script, provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_read(read_args, output_dir, user_prefs)
     if rc != 0:
@@ -641,7 +644,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         warmstart=getattr(args, "warmstart", False),
         provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_profile(profile_args, output_dir, user_prefs)
     if rc != 0:
@@ -663,7 +667,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         profile_dir=str(output_dir / "profile"),
         provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_interpret(interpret_args, output_dir, user_prefs)
     if rc != 0:
@@ -677,7 +682,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         arch_dir=None, profile_dir=None,
         provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_suggest(suggest_args, output_dir, user_prefs)
     if rc != 0:
@@ -701,7 +707,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         optimization=None, top=top_n,
         provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_edit(edit_args, output_dir, user_prefs)
     if rc != 0:
@@ -720,7 +727,8 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         edit_dir=None,
         provider=args.provider, api_key=args.api_key,
         model=args.model,
-        base_url=args.base_url, output=args.output, prefs=args.prefs,
+        base_url=args.base_url,
+        seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = cmd_benchmark(benchmark_args, output_dir, user_prefs)
 

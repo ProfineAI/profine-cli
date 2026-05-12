@@ -72,6 +72,7 @@ class CodeReader:
         api_key: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        seed: int | None = None,
     ) -> None:
         self.provider = provider
         self._llm_kwargs: dict[str, Any] = {}
@@ -81,6 +82,8 @@ class CodeReader:
             self._llm_kwargs["model"] = model
         if base_url:
             self._llm_kwargs["base_url"] = base_url
+        if seed is not None:
+            self._llm_kwargs["seed"] = seed
 
     def read(
         self,

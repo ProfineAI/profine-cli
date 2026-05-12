@@ -2,6 +2,14 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.3] — 2026-05-12
+
+### Added
+- **Deterministic optimization rankings.** New `--seed` flag (best-effort) plumbed through every LLM-using stage. Default LLM `temperature` is now `0.0` (was `0.2`). With a fixed seed and temperature=0, OpenAI and OpenAI-compatible local providers produce the same ranking and apply/skip decisions across runs; Anthropic ignores `seed` but honors temperature=0.
+
+### Changed
+- All backends now accept `temperature` and `seed` constructor arguments; defaults are deterministic.
+
 ## [0.3.2] — 2026-05-12
 
 ### Added
