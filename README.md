@@ -2,12 +2,12 @@
 
 **Website: [profine.ai](https://profine.ai/)**
 
-Profile and optimize PyTorch training scripts on real Modal GPUs.
+Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured speedups before the multi-hour run.
 
 ## Demo
 
 <!-- Replace VIDEO_ID with the YouTube video ID once published. -->
-[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://youtu.be/CY9aW1Dcrn0)
 
 ## Install
 
