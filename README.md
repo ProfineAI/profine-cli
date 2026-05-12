@@ -30,7 +30,7 @@ profine run-all examples/minGPT/projects/chargpt/chargpt.py \
   --hardware 1x_a100 --steps 25 --warmup 10 --seed 42
 ```
 
-Full artifacts (JSON + Markdown reports for every pipeline step) live in [`examples/minGPT/profine_output/`](examples/minGPT/profine_output/) — read [`SUMMARY.md`](examples/minGPT/profine_output/SUMMARY.md) first. As shown in the [demo](https://youtu.be/CY9aW1Dcrn0).
+Full artifacts (JSON + Markdown reports for every pipeline step) live in [`examples/minGPT/profine_output/`](examples/minGPT/profine_output/). Read [`SUMMARY.md`](examples/minGPT/profine_output/SUMMARY.md) first.
 
 ## Install
 
@@ -85,7 +85,7 @@ read → profile → interpret → suggest → edit → benchmark
 
 Each step reads the previous step's output from `profine_output/`.
 
-Global flags (all commands): `--provider {openai,anthropic,local}` (default `openai`), `--api-key`, `--model`, `--base-url` (for `local`), `-o/--output` (default `profine_output`), `--prefs`.
+Global flags (all commands): `--provider {openai,anthropic,local}` (default `openai`), `--api-key`, `--model`, `--base-url` (for `local`), `--seed` (best-effort, makes LLM rankings reproducible), `-o/--output` (default `profine_output`), `--prefs`.
 
 ### Auto (`run-all`)
 
@@ -122,7 +122,7 @@ No additional flags. Output: `profine_output/read/architecture_record.json`
 Instrument the script and run on Modal with torch.profiler; collects step times, kernel breakdown, GPU utilization, and memory.
 
 ```bash
-profine profile nanoGPT/train.py --hardware 1x_a100 --steps 20 --warmup 10
+profine profile nanoGPT/train.py --hardware 1x_a100
 ```
 
 | Flag | Default | Description |
@@ -190,18 +190,22 @@ Output: `profine_output/edit/edited_train.py`, `profine_output/edit/files/`, `pr
 Run original and optimized back-to-back on the same hardware. Patched library files in `profine_output/edit/files/` are overlaid on the optimized run. Loss tolerance auto-widens for numerics-perturbing classes (BF16/mixed precision: rtol 5%, quantization: rtol 10%).
 
 ```bash
-profine benchmark nanoGPT/train.py --optimized profine_output/edit/edited_train.py --hardware 1x_a100 --steps 20 --warmup 10
+# Picks up the editor's most recent output automatically:
+profine benchmark nanoGPT/train.py --hardware 1x_a100
+
+# Or point at a specific optimized script:
+profine benchmark nanoGPT/train.py --optimized profine_output/edit/edited_train.py
 ```
 
 | Flag | Default | Description |
 |---|---|---|
-| `--optimized` | required | Path to the optimized script |
+| `--optimized` | `<output>/edit/edited_train.py` | Path to the optimized script |
 | `--hardware` | `1x_a100` | Hardware preset name |
 | `--steps` | `60` | Total optimizer steps |
 | `--warmup` | `30` | Warmup steps |
 | `--rtol` | `0.01` | Relative tolerance for loss check (auto-widened) |
 | `--atol` | `0.0001` | Absolute tolerance for loss check (auto-widened) |
-| `--edit-dir` | `<output>/edit` | Directory whose `files/` subtree is overlaid |
+| `--edit-dir` | `<output>/edit` | Directory whose `files/` subtree is overlaid onto the optimized run (multi-file edits) |
 | `--timeout` | `900` | Modal container timeout (s) |
 | `--warmstart` | off | Reuse deployed Modal app between runs |
 
