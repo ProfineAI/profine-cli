@@ -42,5 +42,4 @@ uv.lock
 .profine_tmp/
 .profine_optimized_*.py
 profine_output*/
-aryan-outputs/
 quickstart_out/
