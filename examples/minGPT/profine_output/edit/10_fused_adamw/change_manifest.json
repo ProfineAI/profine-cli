@@ -1,0 +1,26 @@
+{
+  "applied": true,
+  "optimization_id": "fused_adamw",
+  "explanation": "Applied the fused AdamW optimization in the model's optimizer \u0928\u093f\u0930\u094d\u092e\u093e\u0923 path. This keeps the optimizer and training behavior the same while requesting PyTorch's fused CUDA implementation to reduce optimizer-step launch and memory-bandwidth overhead.",
+  "changes": [
+    {
+      "path": "mingpt/model.py",
+      "line_start": 253,
+      "line_end": 253,
+      "description": "Enable fused AdamW kernel for the optimizer to reduce optimizer-step overhead.",
+      "original_snippet": "        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)",
+      "new_snippet": "        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas, fused=True) # profine: fused_adamw"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "This requires a PyTorch build with CUDA fused AdamW support; on unsupported builds, optimizer construction may fail."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": [
+    {
+      "path": "mingpt/model.py",
+      "diff": "--- mingpt/model.py+++ mingpt/model.py (optimized)@@ -250,7 +250,7 @@             {\"params\": [param_dict[pn] for pn in sorted(list(decay))], \"weight_decay\": train_config.weight_decay},\n             {\"params\": [param_dict[pn] for pn in sorted(list(no_decay))], \"weight_decay\": 0.0},\n         ]\n-        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas)\n+        optimizer = torch.optim.AdamW(optim_groups, lr=train_config.learning_rate, betas=train_config.betas, fused=True) # profine: fused_adamw\n         return optimizer\n \n     def forward(self, idx, targets=None):\n"
+    }
+  ]
+}

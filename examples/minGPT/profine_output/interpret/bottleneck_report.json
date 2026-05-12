@@ -1,0 +1,238 @@
+{
+  "profile_summary": {
+    "hardware": {
+      "gpu": "A100",
+      "gpu_count": 1,
+      "vram_gb": 80.0,
+      "cost_per_hour": 2.5
+    },
+    "step_time": {
+      "median_ms": 22.80220999999827,
+      "median_s": 0.02,
+      "steady_state_steps": 9
+    },
+    "cost": {
+      "this_run": 0.04,
+      "per_1k_steps": 0.02
+    },
+    "memory": {
+      "peak_gb": 1.43,
+      "total_vram_gb": 80.0,
+      "utilization_pct": 1.8,
+      "headroom_pct": 98.2
+    },
+    "kernel_time_ms_per_step": {
+      "matmul": 11,
+      "attention": 1,
+      "elementwise": 4,
+      "normalization": 1,
+      "optimizer": 3,
+      "communication": 0,
+      "memory": 1,
+      "other": 3
+    },
+    "top_kernels": [
+      {
+        "name": "aten::mm",
+        "category": "matmul",
+        "pct": 12.8,
+        "time_ms": 117.4
+      },
+      {
+        "name": "aten::addmm",
+        "category": "matmul",
+        "pct": 7.1,
+        "time_ms": 65.2
+      },
+      {
+        "name": "aten::bmm",
+        "category": "attention",
+        "pct": 6.5,
+        "time_ms": 59.7
+      },
+      {
+        "name": "aten::mul",
+        "category": "elementwise",
+        "pct": 6.4,
+        "time_ms": 59.0
+      },
+      {
+        "name": "ampere_sgemm_32x128_tn",
+        "category": "matmul",
+        "pct": 5.1,
+        "time_ms": 46.6
+      },
+      {
+        "name": "ampere_sgemm_32x32_sliced1x4_nt",
+        "category": "matmul",
+        "pct": 4.4,
+        "time_ms": 40.3
+      },
+      {
+        "name": "Optimizer.step#AdamW.step",
+        "category": "optimizer",
+        "pct": 4.4,
+        "time_ms": 40.2
+      },
+      {
+        "name": "ampere_sgemm_32x128_nn",
+        "category": "matmul",
+        "pct": 4.3,
+        "time_ms": 39.3
+      },
+      {
+        "name": "void at::native::vectorized_elementwise_",
+        "category": "other",
+        "pct": 3.4,
+        "time_ms": 31.2
+      },
+      {
+        "name": "void at::native::vectorized_elementwise_",
+        "category": "other",
+        "pct": 3.1,
+        "time_ms": 28.1
+      }
+    ],
+    "profile_flags": {
+      "precision": "fp32",
+      "attention_impl": "manual",
+      "communication_overhead_pct": 0.0,
+      "dataloader_stall_pct": 0.9162680750916005
+    }
+  },
+  "bottleneck_report": {
+    "bottlenecks": [
+      {
+        "category": "matmul",
+        "location": "GEMM-heavy transformer compute: aten::mm, aten::addmm, and Ampere SGEMM kernels dominate the step",
+        "time_share_pct": 46.2,
+        "est_headroom_pct": 18.0,
+        "confidence": "observed",
+        "supporting_evidence": [
+          {
+            "metric": "kernel_breakdown.matmul.pct",
+            "value": 46.2
+          },
+          {
+            "metric": "kernel_breakdown.matmul.ms_per_step",
+            "value": 11
+          },
+          {
+            "metric": "top_kernels[0].name",
+            "value": "aten::mm"
+          },
+          {
+            "metric": "top_kernels[1].name",
+            "value": "aten::addmm"
+          },
+          {
+            "metric": "top_kernels[4].name",
+            "value": "ampere_sgemm_32x128_tn"
+          }
+        ],
+        "notes": "This is the largest single category by CUDA time. The estimated headroom is bounded because matmul is already using vendor GEMM kernels; the remaining gap is from kernel efficiency and overall compute intensity, not from eliminating the work."
+      },
+      {
+        "category": "elementwise",
+        "location": "Elementwise tensor ops and fused-unfused pointwise work",
+        "time_share_pct": 15.6,
+        "est_headroom_pct": 7.0,
+        "confidence": "observed",
+        "supporting_evidence": [
+          {
+            "metric": "kernel_breakdown.elementwise.pct",
+            "value": 15.6
+          },
+          {
+            "metric": "kernel_breakdown.elementwise.ms_per_step",
+            "value": 4
+          },
+          {
+            "metric": "top_kernels[3].name",
+            "value": "aten::mul"
+          },
+          {
+            "metric": "top_kernels[8].name",
+            "value": "void at::native::vectorized_elementwise_"
+          }
+        ],
+        "notes": "Pointwise work is a meaningful secondary cost, but it is smaller than matmul and typically less dominant in end-to-end step time."
+      },
+      {
+        "category": "optimizer",
+        "location": "AdamW optimizer step",
+        "time_share_pct": 11.1,
+        "est_headroom_pct": 5.0,
+        "confidence": "observed",
+        "supporting_evidence": [
+          {
+            "metric": "kernel_breakdown.optimizer.pct",
+            "value": 11.1
+          },
+          {
+            "metric": "kernel_breakdown.optimizer.ms_per_step",
+            "value": 3
+          },
+          {
+            "metric": "top_kernels[6].name",
+            "value": "Optimizer.step#AdamW.step"
+          }
+        ],
+        "notes": "Optimizer overhead is non-trivial relative to the short 22.8 ms median step time, but still clearly smaller than the forward/backward GEMM workload."
+      },
+      {
+        "category": "attention",
+        "location": "Manual causal attention path, including aten::bmm",
+        "time_share_pct": 6.5,
+        "est_headroom_pct": 3.0,
+        "confidence": "observed",
+        "supporting_evidence": [
+          {
+            "metric": "kernel_breakdown.attention.pct",
+            "value": 6.5
+          },
+          {
+            "metric": "kernel_breakdown.attention.ms_per_step",
+            "value": 1
+          },
+          {
+            "metric": "top_kernels[2].name",
+            "value": "aten::bmm"
+          },
+          {
+            "metric": "attention_impl",
+            "value": "manual"
+          }
+        ],
+        "notes": "Attention is present but not the dominant cost in this profile; most time is elsewhere in matmul and pointwise/optimizer work."
+      },
+      {
+        "category": "data_pipeline",
+        "location": "DataLoader stall between steps",
+        "time_share_pct": 0.9162680750916005,
+        "est_headroom_pct": 0.9,
+        "confidence": "observed",
+        "supporting_evidence": [
+          {
+            "metric": "dataloader_stall_pct",
+            "value": 0.9162680750916005
+          }
+        ],
+        "notes": "The input pipeline is visible but very small relative to compute; it is not a primary limiter in this run."
+      }
+    ],
+    "compute_bound": true,
+    "memory_bandwidth_bound": false,
+    "memory_capacity_bound": false,
+    "data_pipeline_bound": false,
+    "communication_bound": false,
+    "summary": "This run is overwhelmingly compute-bound on a single A100: matmul alone accounts for 46.2% of step time (11 ms of a 22.8 ms median step), with additional time in elementwise ops (15.6%), AdamW (11.1%), and attention (6.5%). Memory pressure is negligible at 1.43 GB peak on an 80 GB GPU, and dataloader stalls are under 1% of time, so the step is dominated by GPU kernel execution rather than input, communication, or capacity limits.",
+    "time_breakdown_narrative": "The median step time is 22.8 ms, and the kernel breakdown shows that most of that time is spent in GPU compute. Matmul is the largest bucket at 46.2% of step time, or about 11 ms/step, with the top kernels being aten::mm (12.8% of total CUDA time), aten::addmm (7.1%), and several Ampere SGEMM kernels. Elementwise work is the next largest category at 15.6% (4 ms/step), which is consistent with the presence of aten::mul and vectorized elementwise kernels in the top-kernel list. Optimizer.step#AdamW.step contributes 11.1% (3 ms/step), while attention is only 6.5% (1 ms/step) and normalization is 4.2% (1 ms/step). The dataloader stall rate is only 0.916%, so input waiting is minor. Memory peak is 1.43 GB on an 80 GB A100, implying 98.2% headroom and ruling out memory capacity pressure as a bottleneck.",
+    "unstructured_notes": [
+      "The profile is from a GPT-style character-level language model with manual causal attention and fp32 precision.",
+      "No distributed communication is present (world size 1), so there is no all-reduce or synchronization bottleneck in this run.",
+      "The reported headroom is limited by the fact that the dominant costs are already core GEMM kernels; the largest estimated gains come from reducing the matmul share, but not all of that time is removable.",
+      "Because several model hyperparameters are unknown from the script alone, the exact split between forward, backward, and optimizer work is partially inferred from kernel names and category totals."
+    ]
+  }
+}

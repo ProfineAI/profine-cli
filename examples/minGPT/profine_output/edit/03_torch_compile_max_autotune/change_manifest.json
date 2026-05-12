@@ -1,0 +1,22 @@
+{
+  "applied": true,
+  "optimization_id": "torch_compile_max_autotune",
+  "explanation": "Applied torch.compile(mode='max-autotune') to the instantiated GPT model before handing it to the trainer. This preserves the model architecture and training logic while enabling compiler-based fusion and autotuned kernel selection for steadier throughput.",
+  "changes": [
+    {
+      "path": "projects/chargpt/chargpt.py",
+      "line_start": 105,
+      "line_end": 105,
+      "description": "Wrap the GPT model with torch.compile using max-autotune for compiler-based kernel selection.",
+      "original_snippet": "    model = GPT(config.model)\n",
+      "new_snippet": "    model = GPT(config.model)\n    model = torch.compile(model, mode='max-autotune') # profine: torch_compile_max_autotune\n"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "First iteration will incur compile overhead.",
+    "torch.compile may trigger recompilation if input shapes change, though this workload uses a fixed block size."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": []
+}

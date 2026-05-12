@@ -1,0 +1,8 @@
+--- original+++ optimized@@ -12,6 +12,8 @@ from mingpt.model import GPT
+ from mingpt.trainer import Trainer
+ from mingpt.utils import set_seed, setup_logging, CfgNode as CN
++
++torch.set_float32_matmul_precision('high') # profine: tf32_matmul
+ 
+ # -----------------------------------------------------------------------------
+ 

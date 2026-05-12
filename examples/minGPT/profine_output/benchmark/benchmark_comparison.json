@@ -1,0 +1,49 @@
+{
+  "metrics": [
+    {
+      "name": "step_time_median_ms",
+      "baseline": 25.2165,
+      "candidate": 8.111,
+      "delta": -17.1056,
+      "delta_pct": -67.83,
+      "improved": true
+    },
+    {
+      "name": "throughput_steps_per_sec",
+      "baseline": 39.6565,
+      "candidate": 123.2901,
+      "delta": 83.6336,
+      "delta_pct": 210.9,
+      "improved": true
+    },
+    {
+      "name": "memory_peak_gb",
+      "baseline": 1.4278,
+      "candidate": 0.4472,
+      "delta": -0.9806,
+      "delta_pct": -68.68,
+      "improved": true
+    },
+    {
+      "name": "gpu_util_mean_pct",
+      "baseline": 15.5833,
+      "candidate": 4.155,
+      "delta": -11.4283,
+      "delta_pct": -73.34,
+      "improved": false
+    }
+  ],
+  "correctness": {
+    "passed": true,
+    "loss_match": true,
+    "max_loss_diff": 0.03388619422912598,
+    "rtol": 0.05,
+    "atol": 0.01,
+    "notes": "Loss curves match across 15 steps (max diff: 0.033886)"
+  },
+  "speedup_pct": 67.83,
+  "memory_delta_pct": -68.68,
+  "util_delta_pct": -11.428341606913037,
+  "verdict": "PASS",
+  "summary": "PASS | 67.8% faster | 68.7% less memory | GPU util -11pp | correctness: PASS"
+}

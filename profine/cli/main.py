@@ -137,8 +137,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     try:
-        from dotenv import load_dotenv
-        load_dotenv()
+        # When profine is installed as a console script, find_dotenv()'s default
+        # (usecwd=False) walks up from the entry-script's directory — e.g.
+        # ~/anaconda3/bin/, which never has a .env. Force the search to start at
+        # the user's cwd so `.env` in their project root is actually loaded.
+        from dotenv import find_dotenv, load_dotenv
+        load_dotenv(find_dotenv(usecwd=True))
     except ImportError:
         pass
 

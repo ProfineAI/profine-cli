@@ -42,5 +42,13 @@ uv.lock
 .profine_tmp/
 .profine_optimized_*.py
 profine_output*/
+# Exception: the canonical demo artifacts in examples/minGPT/ ARE checked in
+# as evidence the headline numbers in the README are reproducible.
+!examples/minGPT/profine_output/
+!examples/minGPT/profine_output/**
 quickstart_out/
 dist/
+
+# profine-output _debug dumps (per-run, not for the repo)
+examples/**/profine_output/_debug/
+examples/**/run.log

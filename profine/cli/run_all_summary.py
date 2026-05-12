@@ -100,12 +100,35 @@ def _architecture_section(arch: dict) -> str:
         val = arch.get(key)
         if not val:
             continue
-        if isinstance(val, dict):
-            val = val.get("value", val)
-        rows.append(f"- **{label}:** {val}")
+        rendered = _render_arch_value(val)
+        if not rendered:
+            continue
+        rows.append(f"- **{label}:** {rendered}")
     if not rows:
         rows.append("_(no structured architecture fields parsed)_")
     return "\n".join(lines + rows)
+
+
+def _render_arch_value(val: Any) -> str:
+    """Render an architecture field that may be a scalar, an evidence-wrapped
+    `{value, confidence, evidence, notes}` dict, or a compound dict of such
+    fields. Returns a flat human-readable string — never raw JSON soup.
+    """
+    if val is None or val == "":
+        return ""
+    if not isinstance(val, dict):
+        return str(val)
+    # Evidence-wrapped scalar: {"value": ..., "confidence": ..., "evidence": ...}
+    if "value" in val and not isinstance(val["value"], dict):
+        v = val["value"]
+        return "" if v in (None, "", False) else str(v)
+    # Compound dict of named evidence-wrapped fields — render as "k=v, k=v".
+    parts: list[str] = []
+    for k, sub in val.items():
+        sv = _render_arch_value(sub)
+        if sv:
+            parts.append(f"{k}={sv}")
+    return ", ".join(parts)
 
 
 def _bottleneck_section(payload: dict) -> str:

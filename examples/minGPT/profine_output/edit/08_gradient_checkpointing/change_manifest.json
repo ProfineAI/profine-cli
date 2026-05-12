@@ -1,0 +1,10 @@
+{
+  "applied": false,
+  "optimization_id": "gradient_checkpointing",
+  "explanation": "",
+  "changes": [],
+  "new_imports": [],
+  "warnings": [],
+  "not_applicable_reason": "Gradient checkpointing is not applicable here because the project already uses a tiny 6-layer, 192-hidden-size GPT with short context length and no existing memory pressure hook or HF model interface. Enabling checkpointing would require architectural/training-loop changes that would only add compute overhead without addressing a current bottleneck.",
+  "extra_file_edits": []
+}

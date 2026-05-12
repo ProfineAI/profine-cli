@@ -1,0 +1,9 @@
+--- mingpt/trainer.py+++ mingpt/trainer.py (optimized)@@ -90,7 +90,8 @@             x, y = batch
+ 
+             # forward the model
+-            logits, self.loss = model(x, y)
++            with torch.autocast(device_type='cuda', dtype=torch.bfloat16): # profine: bf16_mixed_precision
++                logits, self.loss = model(x, y)
+ 
+             # backprop and update the parameters
+             model.zero_grad(set_to_none=True)

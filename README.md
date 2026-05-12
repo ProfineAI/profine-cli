@@ -15,18 +15,22 @@ Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured
 
 ## Results
 
-On [Karpathy's minGPT](https://github.com/karpathy/minGPT), single-A100:
+On [Karpathy's minGPT](https://github.com/karpathy/minGPT) (single A100, measured end-to-end by profine):
 
 | Metric | Baseline | profine | Δ |
 |---|---|---|---|
-| Step time | 1.00× | **3.1× faster** | −67.7% ms/step |
-| Peak memory | 1.00× | **−66.4%** | substantial headroom for larger batch |
+| Step time (ms) | 25.22 | 8.11 | **−67.8%** (**3.11× faster**) |
+| Peak memory (GB) | 1.43 | 0.45 | **−68.7%** |
+| Correctness (loss curves match) | ✓ | ✓ | within BF16-widened tolerance |
 
-Reproducible with some variation of (as shown in the [demo](https://youtu.be/CY9aW1Dcrn0)):
+Stack applied: **BF16 Mixed Precision + TF32 matmul + torch.compile (max-autotune) + SDPA + Fused AdamW.** Reproducible with:
 
 ```bash
-profine run-all examples/minGPT/projects/chargpt/chargpt.py --hardware 1x_a100 --steps 25 --warmup 10
+profine run-all examples/minGPT/projects/chargpt/chargpt.py \
+  --hardware 1x_a100 --steps 25 --warmup 10 --seed 42
 ```
+
+Full artifacts (JSON + Markdown reports for every pipeline step) live in [`examples/minGPT/profine_output/`](examples/minGPT/profine_output/) — read [`SUMMARY.md`](examples/minGPT/profine_output/SUMMARY.md) first. As shown in the [demo](https://youtu.be/CY9aW1Dcrn0).
 
 ## Install
 

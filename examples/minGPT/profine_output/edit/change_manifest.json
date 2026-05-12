@@ -1,0 +1,43 @@
+{
+  "optimization_id": "bf16_mixed_precision",
+  "applied_ids": [
+    "bf16_mixed_precision",
+    "tf32_matmul",
+    "torch_compile_max_autotune",
+    "sdpa",
+    "fused_adamw"
+  ],
+  "skipped": [
+    {
+      "entry_id": "fp16_mixed_precision",
+      "reason": "exclusive group 2 \u2014 conflicts with already-applied optimization"
+    },
+    {
+      "entry_id": "torch_compile",
+      "reason": "exclusive group 3 \u2014 conflicts with already-applied optimization"
+    },
+    {
+      "entry_id": "dataloader_workers",
+      "reason": "The requested DataLoader worker optimization is already effectively present in the codebase via Trainer.get_default_config() setting num_workers=4, and the DataLoader in mingpt/trainer.py already uses config.num_workers. The specific persistent_workers/prefetch_factor additions are not safely applicable here because they would change DataLoader behavior for this tiny character dataset and require conditional handling for worker count/platform compatibility."
+    },
+    {
+      "entry_id": "foreach_adamw",
+      "reason": "exclusive group 4 \u2014 conflicts with already-applied optimization"
+    }
+  ],
+  "warnings": [
+    "This requires bf16-capable CUDA hardware; on unsupported setups, torch.autocast with device_type='cuda' may not provide the intended benefit.",
+    "The autocast scope is limited to the forward pass only, so backward and optimizer steps remain in full precision as before.",
+    "This can introduce small numerical drift versus strict float32, though training behavior is typically unchanged for this workload.",
+    "First iteration will be significantly slower due to compilation.",
+    "Compilation may trigger graph breaks or recompilation if unsupported ops or dynamic shapes are encountered.",
+    "Requires PyTorch 2.0+ for torch.nn.functional.scaled_dot_product_attention.",
+    "SDPA may choose different internal backends depending on device and dtype, but the functional behavior should remain equivalent.",
+    "Entry script was structurally rewritten alongside file_edits (likely inlining of Local Module code) \u2014 reverted to the original entry source. Only the file_edits will be applied.",
+    "Fused AdamW requires a PyTorch build that supports fused optimizers and a CUDA device; on unsupported setups, PyTorch may raise an error when constructing the optimizer."
+  ],
+  "extra_files": [
+    "mingpt/model.py",
+    "mingpt/trainer.py"
+  ]
+}

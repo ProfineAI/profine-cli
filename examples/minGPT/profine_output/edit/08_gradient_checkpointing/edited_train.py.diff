@@ -1,0 +1,8 @@
+--- original+++ optimized@@ -1,8 +1,3 @@-
+-"""
+-Trains a character-level language model.
+-"""
+-
+ import os
+ import sys
+ 

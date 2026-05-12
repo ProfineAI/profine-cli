@@ -1,0 +1,21 @@
+{
+  "applied": true,
+  "optimization_id": "tf32_matmul",
+  "explanation": "Added a one-line global PyTorch precision setting so float32 matrix multiplications can use TF32 tensor cores on Ampere+ GPUs. This targets the dominant GEMM bottleneck without changing the model, optimizer, or loss.",
+  "changes": [
+    {
+      "path": "projects/chargpt/chargpt.py",
+      "line_start": 8,
+      "line_end": 8,
+      "description": "Enable TF32 matmul precision for float32 GEMMs on supported GPUs.",
+      "original_snippet": "import torch",
+      "new_snippet": "import torch\n\ntorch.set_float32_matmul_precision('high') # profine: tf32_matmul"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "This can introduce small numerical drift versus strict float32, though training behavior is typically unchanged for this workload."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": []
+}

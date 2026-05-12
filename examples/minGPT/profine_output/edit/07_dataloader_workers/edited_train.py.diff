@@ -1,0 +1,8 @@
+--- original+++ optimized@@ -1,3 +1,4 @@+```python
+ """
+ Trains a character-level language model.
+ """
+@@ -135,3 +136,4 @@ 
+     # run the optimization
+     trainer.run()
++```

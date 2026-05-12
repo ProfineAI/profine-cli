@@ -1,0 +1,492 @@
+{
+  "script_path": "examples/minGPT/projects/chargpt/chargpt.py",
+  "framework": {
+    "value": "PyTorch",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 8,
+        "snippet": "import torch",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 9,
+        "snippet": "from torch.utils.data import Dataset",
+        "kind": "import"
+      }
+    ]
+  },
+  "model_family": {
+    "value": "GPT",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 12,
+        "snippet": "from mingpt.model import GPT",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ]
+  },
+  "model_class": {
+    "value": "GPT",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 102,
+        "snippet": "model = GPT(config.model)",
+        "kind": "code"
+      }
+    ]
+  },
+  "model_variable": {
+    "value": "model",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 102,
+        "snippet": "model = GPT(config.model)",
+        "kind": "code"
+      }
+    ]
+  },
+  "layer_composition": {
+    "value": "transformer_decoder",
+    "confidence": "inferred",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 120,
+        "snippet": "y = model.generate(x, 500, temperature=1.0, do_sample=True, top_k=10)[0]",
+        "kind": "code"
+      }
+    ],
+    "notes": "Inferred from GPT language-model usage and autoregressive generation; the script itself does not spell out internal blocks."
+  },
+  "attention_type": {
+    "value": "causal_mha",
+    "confidence": "inferred",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 2,
+        "snippet": "Trains a character-level language model.",
+        "kind": "comment"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 120,
+        "snippet": "y = model.generate(x, 500, temperature=1.0, do_sample=True, top_k=10)[0]",
+        "kind": "code"
+      }
+    ],
+    "notes": "The script uses an autoregressive GPT model; exact attention implementation is not visible in this file."
+  },
+  "head_dim": {
+    "value": 0,
+    "confidence": "guessed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ],
+    "notes": "Not directly specified in this script and not derivable without the GPT implementation; omitted would be preferable, but included here only because the schema requests it. Treat as unknown."
+  },
+  "num_heads": {
+    "value": 0,
+    "confidence": "guessed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ],
+    "notes": "Not specified in this script; actual value depends on mingpt.model.GPT defaults."
+  },
+  "num_layers": {
+    "value": 0,
+    "confidence": "guessed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ],
+    "notes": "Not specified in this script; actual value depends on mingpt.model.GPT defaults."
+  },
+  "hidden_size": {
+    "value": 0,
+    "confidence": "guessed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ],
+    "notes": "Not specified in this script; actual value depends on mingpt.model.GPT defaults."
+  },
+  "vocab_size": {
+    "value": 0,
+    "confidence": "guessed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 100,
+        "snippet": "config.model.vocab_size = train_dataset.get_vocab_size()",
+        "kind": "code"
+      }
+    ],
+    "notes": "Vocabulary size is data-dependent and not known statically from the script."
+  },
+  "context_length": {
+    "value": 128,
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 50,
+        "snippet": "C.block_size = 128",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 101,
+        "snippet": "config.model.block_size = train_dataset.get_block_size()",
+        "kind": "code"
+      }
+    ]
+  },
+  "optimizer": {
+    "name": {
+      "value": "AdamW",
+      "confidence": "inferred",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 13,
+          "snippet": "from mingpt.trainer import Trainer",
+          "kind": "import"
+        },
+        {
+          "file": "chargpt.py",
+          "line": 35,
+          "snippet": "C.trainer = Trainer.get_default_config()",
+          "kind": "code"
+        }
+      ],
+      "notes": "The optimizer is not explicitly constructed in this file; inferred from common mingpt.Trainer defaults."
+    },
+    "learning_rate": {
+      "value": 0.0005,
+      "confidence": "observed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 36,
+          "snippet": "C.trainer.learning_rate = 5e-4 # the model we're using is so small that we can go a bit faster",
+          "kind": "comment"
+        }
+      ]
+    }
+  },
+  "dataloader": {
+    "dataset_class": {
+      "value": "CharDataset",
+      "confidence": "observed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 42,
+          "snippet": "class CharDataset(Dataset):",
+          "kind": "code"
+        },
+        {
+          "file": "chargpt.py",
+          "line": 97,
+          "snippet": "train_dataset = CharDataset(config.data, text)",
+          "kind": "code"
+        }
+      ]
+    },
+    "batch_size": {
+      "value": 0,
+      "confidence": "guessed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 35,
+          "snippet": "C.trainer = Trainer.get_default_config()",
+          "kind": "code"
+        }
+      ],
+      "notes": "Batch size is not set in this script; likely comes from Trainer defaults."
+    }
+  },
+  "loss_function": {
+    "value": "cross_entropy",
+    "confidence": "inferred",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 2,
+        "snippet": "Trains a character-level language model.",
+        "kind": "comment"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 80,
+        "snippet": "x = torch.tensor(dix[:-1], dtype=torch.long)",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 81,
+        "snippet": "y = torch.tensor(dix[1:], dtype=torch.long)",
+        "kind": "code"
+      }
+    ],
+    "notes": "Standard next-token language modeling objective; exact loss call is inside Trainer and not shown here."
+  },
+  "scheduler": {
+    "value": "none",
+    "confidence": "inferred",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 35,
+        "snippet": "C.trainer = Trainer.get_default_config()",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 133,
+        "snippet": "trainer.run()",
+        "kind": "code"
+      }
+    ],
+    "notes": "No scheduler is configured in this script."
+  },
+  "distributed": {
+    "strategy": {
+      "value": "none",
+      "confidence": "observed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 86,
+          "snippet": "if __name__ == '__main__':",
+          "kind": "code"
+        },
+        {
+          "file": "chargpt.py",
+          "line": 133,
+          "snippet": "trainer.run()",
+          "kind": "code"
+        }
+      ]
+    },
+    "world_size": {
+      "value": 1,
+      "confidence": "inferred",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 86,
+          "snippet": "if __name__ == '__main__':",
+          "kind": "code"
+        }
+      ]
+    },
+    "gradient_accumulation_steps": {
+      "value": 1,
+      "confidence": "guessed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 35,
+          "snippet": "C.trainer = Trainer.get_default_config()",
+          "kind": "code"
+        }
+      ],
+      "notes": "Not specified in this file; likely a Trainer default."
+    }
+  },
+  "precision": {
+    "training_dtype": {
+      "value": "float32",
+      "confidence": "inferred",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 8,
+          "snippet": "import torch",
+          "kind": "import"
+        },
+        {
+          "file": "chargpt.py",
+          "line": 80,
+          "snippet": "x = torch.tensor(dix[:-1], dtype=torch.long)",
+          "kind": "code"
+        }
+      ],
+      "notes": "No mixed-precision or autocast is configured in this script."
+    },
+    "autocast_enabled": {
+      "value": false,
+      "confidence": "observed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 116,
+          "snippet": "with torch.no_grad():",
+          "kind": "code"
+        }
+      ],
+      "notes": "No autocast context is present."
+    },
+    "grad_scaler": {
+      "value": false,
+      "confidence": "observed",
+      "evidence": [
+        {
+          "file": "chargpt.py",
+          "line": 8,
+          "snippet": "import torch",
+          "kind": "import"
+        }
+      ],
+      "notes": "No GradScaler is instantiated or used."
+    }
+  },
+  "compile_mode": {
+    "value": "disabled",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 8,
+        "snippet": "import torch",
+        "kind": "import"
+      }
+    ]
+  },
+  "custom_kernels": {
+    "value": "none",
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 8,
+        "snippet": "import torch",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 12,
+        "snippet": "from mingpt.model import GPT",
+        "kind": "import"
+      }
+    ],
+    "notes": "No flash-attention, xformers, Triton, or other custom kernel usage is visible in this script."
+  },
+  "gradient_checkpointing": {
+    "value": false,
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 31,
+        "snippet": "C.model = GPT.get_default_config()",
+        "kind": "code"
+      }
+    ],
+    "notes": "No checkpointing API or config flag is used in this file."
+  },
+  "dependencies": {
+    "value": [
+      "torch",
+      "mingpt"
+    ],
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 8,
+        "snippet": "import torch",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 12,
+        "snippet": "from mingpt.model import GPT",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 13,
+        "snippet": "from mingpt.trainer import Trainer",
+        "kind": "import"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 14,
+        "snippet": "from mingpt.utils import set_seed, setup_logging, CfgNode as CN",
+        "kind": "import"
+      }
+    ]
+  },
+  "unstructured_notes": {
+    "value": [
+      "Character-level language modeling on text loaded from input.txt.",
+      "Training data is a single CharDataset built from the entire file; no explicit train/val split is present in this script.",
+      "The script periodically samples 500 tokens from the model every 500 iterations and saves model.pt to ./out/chargpt.",
+      "Several architecture fields (e.g. num_layers, num_heads, hidden_size, optimizer type) are not explicitly defined here and may depend on mingpt defaults."
+    ],
+    "confidence": "observed",
+    "evidence": [
+      {
+        "file": "chargpt.py",
+        "line": 96,
+        "snippet": "text = open('input.txt', 'r').read() # don't worry we won't run out of file handles",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 113,
+        "snippet": "if trainer.iter_num % 500 == 0:",
+        "kind": "code"
+      },
+      {
+        "file": "chargpt.py",
+        "line": 125,
+        "snippet": "ckpt_path = os.path.join(config.system.work_dir, \"model.pt\")",
+        "kind": "code"
+      }
+    ]
+  }
+}

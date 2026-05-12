@@ -1,0 +1,28 @@
+{
+  "applied": true,
+  "optimization_id": "sdpa",
+  "explanation": "Applied the SDPA optimization in the GPT attention module. The manual QK^T / softmax / V path was replaced with torch.nn.functional.scaled_dot_product_attention, preserving causal masking and dropout behavior while allowing PyTorch to select the best fused backend available.",
+  "changes": [
+    {
+      "path": "mingpt/model.py",
+      "line_start": 61,
+      "line_end": 70,
+      "description": "Replaced manual causal attention computation with PyTorch scaled dot product attention.",
+      "original_snippet": "        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)\n        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))\n        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))\n        att = F.softmax(att, dim=-1)\n        att = self.attn_dropout(att)\n        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)\n        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side",
+      "new_snippet": "        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)\n        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.attn_dropout.p if self.training else 0.0, is_causal=True) # profine: sdpa\n        y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "Requires PyTorch 2.0+ for F.scaled_dot_product_attention.",
+    "Backend selection is automatic; performance gains depend on hardware and tensor shapes.",
+    "Entry script was structurally rewritten alongside file_edits (likely inlining of Local Module code) \u2014 reverted to the original entry source. Only the file_edits will be applied."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": [
+    {
+      "path": "mingpt/model.py",
+      "diff": "--- mingpt/model.py+++ mingpt/model.py (optimized)@@ -59,11 +59,7 @@         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)\n \n         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)\n-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))\n-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))\n-        att = F.softmax(att, dim=-1)\n-        att = self.attn_dropout(att)\n-        y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)\n+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.attn_dropout.p if self.training else 0.0, is_causal=True) # profine: sdpa\n         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side\n \n         # output projection\n"
+    }
+  ]
+}

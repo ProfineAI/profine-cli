@@ -2,6 +2,13 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.4] — 2026-05-12
+
+### Fixed
+- **`.env` loading from installed binary.** `load_dotenv()` defaults to searching upward from the entry-script directory (e.g. `~/anaconda3/bin/`), which never has a `.env`. Now passes `find_dotenv(usecwd=True)` explicitly, so `OPENAI_API_KEY` (and friends) in your project's `.env` are picked up when you run `profine` from your project root.
+- **Spurious "correctness: FAIL" verdicts.** `_strip_warmup` used to chop `loss_values` per-payload using auto-detected stabilization points, which yielded different warmup counts for baseline vs. optimized (e.g. 10 vs. 15 with `torch.compile`). The correctness check then compared baseline-step-10 against optimized-step-15 — five training steps apart — and flagged the natural divergence as a failure. Now `_strip_warmup` only touches `step_times_ms`; losses stay aligned by original training-step index.
+- **Cleaner `SUMMARY.md` architecture section.** Evidence-wrapped and compound architecture fields now render as `key=value, key=value` instead of dumping raw nested JSON.
+
 ## [0.3.3] — 2026-05-12
 
 ### Added

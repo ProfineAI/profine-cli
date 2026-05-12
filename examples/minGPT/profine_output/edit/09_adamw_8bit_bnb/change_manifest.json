@@ -1,0 +1,10 @@
+{
+  "applied": false,
+  "optimization_id": "adamw_8bit_bnb",
+  "explanation": "",
+  "changes": [],
+  "new_imports": [],
+  "warnings": [],
+  "not_applicable_reason": "The requested optimization is 8-bit AdamW via bitsandbytes, but this project already uses standard torch.optim.AdamW inside mingpt/model.py and no bitsandbytes dependency or compatible optimizer path is provided in the local modules. Applying it would change the optimizer implementation and introduce an unprovided dependency, which is outside the safe minimal-edit scope here.",
+  "extra_file_edits": []
+}

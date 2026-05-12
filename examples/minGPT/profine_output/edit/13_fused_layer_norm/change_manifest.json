@@ -1,0 +1,10 @@
+{
+  "applied": false,
+  "optimization_id": "fused_layer_norm",
+  "explanation": "",
+  "changes": [],
+  "new_imports": [],
+  "warnings": [],
+  "not_applicable_reason": "A manual fused LayerNorm/RMSNorm optimization is not applicable here because the model does not implement a custom normalization kernel path; it uses standard PyTorch nn.LayerNorm modules, and the code already relies on torch.compile, which can automatically fuse normalization-adjacent operations. Applying Apex FusedLayerNorm would introduce a new dependency and is not warranted for this codebase under the requested single optimization.",
+  "extra_file_edits": []
+}

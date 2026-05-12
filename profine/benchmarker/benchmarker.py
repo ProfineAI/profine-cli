@@ -352,17 +352,23 @@ def _resolve_tolerance(
 
 
 def _strip_warmup(payload: dict[str, Any], warmup_steps: int) -> None:
-    """Remove warmup steps from payload in-place using stabilization detection."""
+    """Remove warmup steps from `step_times_ms` only.
+
+    Loss values are deliberately left untouched so that baseline and candidate
+    can be aligned by **original training-step index** in the correctness check.
+    Stripping losses per-payload caused a real bug: baseline stabilized at step 10
+    while the torch.compile'd candidate stabilized at step 15, so post-strip step 0
+    compared baseline-step-10 against candidate-step-15 — five training steps
+    apart — and reported a spurious correctness FAIL (~0.18 loss divergence).
+    Step times still get stripped because median-step-time math wants only the
+    steady-state region; loss curves want raw alignment.
+    """
     step_times = payload.get("step_times_ms", [])
     if not step_times:
         return
 
     effective_warmup = detect_stabilization_point(step_times, min_warmup=warmup_steps)
     payload["step_times_ms"] = step_times[effective_warmup:]
-
-    losses = payload.get("loss_values", [])
-    if losses:
-        payload["loss_values"] = losses[effective_warmup:]
 
 
 def _comparison_to_dict(comparison: BenchmarkComparison) -> dict[str, Any]:

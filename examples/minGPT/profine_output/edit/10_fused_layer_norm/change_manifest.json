@@ -1,0 +1,10 @@
+{
+  "applied": false,
+  "optimization_id": "fused_layer_norm",
+  "explanation": "",
+  "changes": [],
+  "new_imports": [],
+  "warnings": [],
+  "not_applicable_reason": "The requested fused LayerNorm/RMSNorm optimization is not applicable here because the model already uses standard LayerNorm and the codebase is configured with torch.compile, which can already fuse normalization-adjacent patterns. No Apex/Triton fused normalization kernel is present or required by the provided code.",
+  "extra_file_edits": []
+}

@@ -1,0 +1,7 @@
+--- original+++ optimized@@ -102,6 +102,7 @@     config.model.vocab_size = train_dataset.get_vocab_size()
+     config.model.block_size = train_dataset.get_block_size()
+     model = GPT(config.model)
++    model = torch.compile(model, mode='max-autotune') # profine: torch.compile_max_autotune
+ 
+     # construct the trainer object
+     trainer = Trainer(config.trainer, model, train_dataset)

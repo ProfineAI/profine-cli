@@ -1,0 +1,21 @@
+{
+  "applied": true,
+  "optimization_id": "tf32_matmul",
+  "explanation": "Added a single global PyTorch matmul precision setting before training starts. On Ampere+ GPUs this allows float32 GEMMs to use TF32 tensor cores, improving dense matmul throughput without changing the model, optimizer, or loss.",
+  "changes": [
+    {
+      "path": "projects/chargpt/chargpt.py",
+      "line_start": 88,
+      "line_end": 88,
+      "description": "Enable TF32-friendly matmul precision at program start.",
+      "original_snippet": "    # get default config and overrides from the command line, if any",
+      "new_snippet": "    torch.set_float32_matmul_precision('high') # profine: tf32_matmul\n\n    # get default config and overrides from the command line, if any"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "This can introduce small numerical drift relative to strict fp32 matmuls."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": []
+}

@@ -1,0 +1,12 @@
+{
+  "applied": false,
+  "optimization_id": "activation_offloading",
+  "explanation": "No code changes were made because activation offloading is intentionally not applicable here: the profile shows the model is not memory-bound, and the requested optimization would only add CPU/GPU transfer overhead without benefit.",
+  "changes": [],
+  "new_imports": [],
+  "warnings": [
+    "Activation offloading would likely reduce throughput substantially for this workload."
+  ],
+  "not_applicable_reason": "The workload is not memory-capacity bound; the model only uses a small fraction of available VRAM, so offloading activations to CPU would add overhead without solving a real bottleneck.",
+  "extra_file_edits": []
+}

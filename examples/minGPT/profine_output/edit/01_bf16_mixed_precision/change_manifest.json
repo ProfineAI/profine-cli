@@ -1,0 +1,27 @@
+{
+  "applied": true,
+  "optimization_id": "bf16_mixed_precision",
+  "explanation": "Applied BF16 mixed precision by autocasting the model forward pass during training. This keeps the model, loss, optimizer, and training loop behavior intact while allowing CUDA matmuls/activations to run in bfloat16 on supported hardware.",
+  "changes": [
+    {
+      "path": "mingpt/trainer.py",
+      "line_start": 92,
+      "line_end": 94,
+      "description": "Wrapped the training forward pass in CUDA bfloat16 autocast to enable BF16 mixed precision.",
+      "original_snippet": "            # forward the model\n            logits, self.loss = model(x, y)\n",
+      "new_snippet": "            # forward the model\n            with torch.autocast(device_type='cuda', dtype=torch.bfloat16): # profine: bf16_mixed_precision\n                logits, self.loss = model(x, y)\n"
+    }
+  ],
+  "new_imports": [],
+  "warnings": [
+    "This requires bf16-capable CUDA hardware; on unsupported setups, torch.autocast with device_type='cuda' may not provide the intended benefit.",
+    "The autocast scope is limited to the forward pass only, so backward and optimizer steps remain in full precision as before."
+  ],
+  "not_applicable_reason": null,
+  "extra_file_edits": [
+    {
+      "path": "mingpt/trainer.py",
+      "diff": "--- mingpt/trainer.py+++ mingpt/trainer.py (optimized)@@ -90,7 +90,8 @@             x, y = batch\n \n             # forward the model\n-            logits, self.loss = model(x, y)\n+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16): # profine: bf16_mixed_precision\n+                logits, self.loss = model(x, y)\n \n             # backprop and update the parameters\n             model.zero_grad(set_to_none=True)\n"
+    }
+  ]
+}
