@@ -2,6 +2,19 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] — 2026-05-12
+
+### Added
+- `run-all` now writes a consolidated **`SUMMARY.md`** at the end with the headline verdict, architecture, bottleneck, optimizations applied, benchmark metrics, and an artifacts index. This is the one file to read after the pipeline finishes.
+- Benchmark report (`benchmark_report.md`) is now decision-useful:
+  - TL;DR headline (✅/⚠️/❌/➖) with speedup multiplier
+  - Projected time-and-cost-saved table (1 hr / 10 hr / 100 hr / 1000 hr of training)
+  - Explicit "ship it / hold / revert" recommendation
+- `generate_report()` now accepts `hardware` and `cost_per_hour` for the savings projection.
+
+### Changed
+- Benchmark report headline now states a clear human verdict instead of just a percentage.
+
 ## [0.3.0] — 2026-05-12
 
 ### Added

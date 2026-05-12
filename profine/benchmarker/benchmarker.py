@@ -201,7 +201,12 @@ class Benchmarker:
         comparison = compare_payloads(baseline_payload, candidate_payload, rtol=eff_rtol, atol=eff_atol)
 
         # Generate report
-        markdown = generate_report(comparison, optimization_name)
+        markdown = generate_report(
+            comparison,
+            optimization_name,
+            hardware=hw.name if hasattr(hw, "name") else None,
+            cost_per_hour=getattr(hw, "cost_per_hour", None),
+        )
 
         return BenchmarkResult(
             comparison=comparison,

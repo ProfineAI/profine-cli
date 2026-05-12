@@ -717,6 +717,16 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
     rc = cmd_benchmark(benchmark_args, output_dir, user_prefs)
 
+    # Write consolidated SUMMARY.md that aggregates every step's key findings.
+    try:
+        from profine.cli.run_all_summary import write_summary
+        summary_path = write_summary(output_dir, script, args.hardware)
+        if summary_path:
+            print(f"\nSummary written to: {summary_path}")
+    except Exception as exc:
+        # Summary generation is best-effort; never fail the pipeline because of it.
+        print(f"(Summary generation failed: {exc})")
+
     print(f"\n{'='*60}")
     print(f"  Pipeline complete. Results in: {output_dir}")
     print(f"{'='*60}")

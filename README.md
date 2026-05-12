@@ -38,7 +38,7 @@ pip install profine
 
 Requires:
 - A [Modal](https://modal.com) account (GPU execution backend)
-- An LLM — OpenAI, Anthropic, **or any OpenAI-compatible local server** (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
+- An LLM. OpenAI, Anthropic, **or any OpenAI-compatible local server** (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
 
 ```bash
 export MODAL_TOKEN_ID=...
