@@ -118,10 +118,8 @@ class ModalExecutor:
         print(f"  [modal] dependencies: {dependencies}")
         print(f"  [modal] python: {python_version}")
 
-        # Check if flash-attention should be built
         build_flash = hardware.flash_attention_supported and _needs_flash_attention(dependencies)
 
-        # Build image
         image = self._image_builder.build(
             modal,
             project_root=project_root,
@@ -133,10 +131,8 @@ class ModalExecutor:
             hf_token=self._hf_token,
         )
 
-        # Build volumes
         volumes = self._image_builder.build_volumes(modal)
 
-        # Build cls kwargs
         cls_kwargs = self._image_builder.build_cls_kwargs(
             hardware=hardware,
             volumes=volumes,
@@ -230,7 +226,6 @@ class ModalExecutor:
 
         rel_path = script_path.resolve().relative_to(project_root.resolve()).as_posix()
 
-        # Try reuse
         if signature_matches(project_root, app_name, current_sig):
             try:
                 remote_fn = modal.Function.from_name(app_name, "run_profile")
@@ -240,7 +235,6 @@ class ModalExecutor:
             except Exception:
                 pass  # Fall through to redeploy
 
-        # Deploy fresh
         app = modal.App(name=app_name, image=image)
         remote_fn = app.function(**cls_kwargs)(run_profile)
 
@@ -252,7 +246,6 @@ class ModalExecutor:
             raw_output = remote_fn.remote(instrumented_source, rel_path, total_steps, self._config.timeout_seconds, script_args, overlay_files)
             return _parse_output(raw_output, time.monotonic() - start)
         except Exception as e:
-            # Fallback to ephemeral
             return self._execute_ephemeral(
                 modal, image, cls_kwargs,
                 instrumented_source=instrumented_source,
@@ -328,7 +321,6 @@ def _remote_execute(
         # bytecode so the next import picks up the new source.
         importlib.invalidate_caches()
 
-    # Write instrumented script to a temp file in the workspace
     script_name = os.path.basename(script_rel_path)
     script_full = os.path.join(work_dir, f"_profine_profile_{script_name}")
     with open(script_full, "w") as f:
@@ -357,10 +349,9 @@ def _remote_execute(
         except Exception:
             pass
 
-    # Capture stdout
     captured = io.StringIO()
     old_stdout = sys.stdout
-    # Use a tee: write to both captured and original stdout
+    # Tee: write to both captured buffer and the original stdout.
     class Tee:
         def write(self, data):
             captured.write(data)

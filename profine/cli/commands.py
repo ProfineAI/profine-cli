@@ -79,7 +79,6 @@ def cmd_interpret(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
     record_data = json.loads(record_path.read_text(encoding="utf-8"))
     arch_data = json.loads(arch_path.read_text(encoding="utf-8")) if arch_path.exists() else None
 
-    # Build a minimal ProfileRecord for the interpreter
     profile_record = _dict_to_profile_record(record_data)
 
     print("Interpreting profile...")
@@ -101,14 +100,12 @@ def cmd_suggest(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
 
     interpret_dir = Path(args.interpret_dir)
 
-    # Load architecture record
     if args.arch_dir:
         arch_path = Path(args.arch_dir) / "architecture_record.json"
     else:
         arch_path = interpret_dir.parent / "read" / "architecture_record.json"
     arch_data = json.loads(arch_path.read_text(encoding="utf-8")) if arch_path.exists() else {}
 
-    # Load bottleneck report + profile summary from interpreter output
     bn_path = interpret_dir / "bottleneck_report.json"
     bottleneck_report = None
     profile_summary = None
@@ -137,7 +134,6 @@ def cmd_suggest(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
 def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.editor.editor import CodeEditor
 
-    # Auto-detect script path from prior steps if not provided
     if not args.script:
         args.script = _auto_detect_script(output_dir)
         if not args.script:
@@ -179,13 +175,11 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     else:
         targets = [candidates[0]]
 
-    # Load entry source and architecture record.
     script_path = Path(args.script).resolve()
     source = script_path.read_text(encoding="utf-8")
     arch_path = output_dir / "read" / "architecture_record.json"
     arch_data = json.loads(arch_path.read_text(encoding="utf-8")) if arch_path.exists() else None
 
-    # Discover local modules so the editor can patch imported files.
     from profine.modal.discovery import discover_local_modules, discover_project_root
     project_root = discover_project_root(script_path)
     base_local_modules = discover_local_modules(script_path)
@@ -298,7 +292,6 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    # Summary
     print()
     ui.path("Edited script", edited_path)
     ui.path("Diff         ", diff_path)
@@ -349,7 +342,6 @@ def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
     from profine.schema.hardware import ModalRuntimeConfig
     from profine.config.settings import DEFAULTS
 
-    # Auto-detect script path from prior steps if not provided
     if not args.script:
         args.script = _auto_detect_script(output_dir)
         if not args.script:
@@ -358,7 +350,6 @@ def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
             return 1
         print(f"Auto-detected script: {args.script}")
 
-    # Auto-detect optimized script from edit output if not provided
     if not args.optimized:
         default_optimized = output_dir / "edit" / "edited_train.py"
         if default_optimized.exists():
@@ -623,7 +614,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     def _step_header(idx: int, name: str, desc: str) -> None:
         ui.header(desc, step=f"{idx}/{len(steps)}")
 
-    # 1. Read
     _step_header(1, *steps[0])
     read_args = Namespace(
         script=script, provider=args.provider, api_key=args.api_key,
@@ -636,7 +626,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         ui.error("Read failed — aborting pipeline.")
         return rc
 
-    # 2. Profile
     _step_header(2, *steps[1])
     profile_args = Namespace(
         script=script, hardware=args.hardware, steps=args.steps,
@@ -652,7 +641,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         ui.error("Profile failed — aborting pipeline.")
         return rc
 
-    # Check profile succeeded (not crash status)
     profile_record = output_dir / "profile" / "profile_record.json"
     if profile_record.exists():
         data = json.loads(profile_record.read_text(encoding="utf-8"))
@@ -661,7 +649,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
             ui.error("Cannot continue without valid profile data — aborting pipeline.")
             return 1
 
-    # 3. Interpret
     _step_header(3, *steps[2])
     interpret_args = Namespace(
         profile_dir=str(output_dir / "profile"),
@@ -675,7 +662,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         ui.error("Interpret failed — aborting pipeline.")
         return rc
 
-    # 4. Suggest
     _step_header(4, *steps[3])
     suggest_args = Namespace(
         interpret_dir=str(output_dir / "interpret"),
@@ -690,11 +676,10 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         ui.error("Suggest failed — aborting pipeline.")
         return rc
 
-    # 5. Edit — apply all ranked candidates (or --top N)
+    # Apply all ranked candidates by default, or --top N if provided.
     _step_header(5, *steps[4])
     top_n = getattr(args, "top", None)
     if top_n is None:
-        # Default: apply all ranked candidates
         sugg_path = output_dir / "suggest" / "suggestion_report.json"
         if sugg_path.exists():
             sugg = json.loads(sugg_path.read_text(encoding="utf-8"))
@@ -715,7 +700,6 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
         ui.error("Edit failed (no optimizations applied) — aborting pipeline.")
         return rc
 
-    # 6. Benchmark
     _step_header(6, *steps[5])
     benchmark_args = Namespace(
         script=script,

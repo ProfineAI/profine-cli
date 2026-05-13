@@ -109,7 +109,6 @@ class OptimizationSuggester:
                 warnings=warnings,
             )
 
-        # Build LLM prompt with (entry, relevance) pairs
         candidates_for_prompt = [(entry, relevance) for entry, relevance, _ in filtered]
         user_msg = build_suggestion_prompt(
             candidates_for_prompt, bottleneck_report, architecture_record,
@@ -122,7 +121,7 @@ class OptimizationSuggester:
         )
         report = _parse_response(parsed, filtered)
 
-        # Build markdown (include unranked applicable entries)
+        # Include unranked-but-applicable entries in the markdown.
         ranked_ids = {c.entry_id for c in report.candidates}
         unranked = [
             (entry, relevance) for entry, relevance, _ in filtered

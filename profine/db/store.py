@@ -38,8 +38,6 @@ class KnowledgeDB:
         self._runs_dir.mkdir(parents=True, exist_ok=True)
         self._evidence_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run history
-
     def save_run(self, record: RunRecord) -> Path:
         """Save a run record to disk. Auto-generates run_id if empty."""
         if not record.run_id:
@@ -66,8 +64,6 @@ class KnowledgeDB:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
         return None
-
-    # Evidence appending (benchmarker writes back to catalog)
 
     def append_evidence(self, optimization_id: str, evidence: EvidenceEntry) -> Path:
         """Append a benchmark evidence entry for an optimization.
@@ -102,8 +98,6 @@ class KnowledgeDB:
             opt_id = f.stem
             result[opt_id] = json.loads(f.read_text(encoding="utf-8"))
         return result
-
-    # Helpers for the pipeline
 
     def build_run_record(
         self,
@@ -142,7 +136,6 @@ class KnowledgeDB:
             failure_reason=failure_reason,
         ))
 
-        # Also append evidence to the catalog
         outcome = f"{speedup_pct:+.1f}% speedup" if applied else f"not applied: {failure_reason}"
         if not correctness_passed:
             outcome = f"correctness FAILED — {failure_reason}"

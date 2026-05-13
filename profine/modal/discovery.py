@@ -44,7 +44,6 @@ def _script_belongs_to_project(script_path: Path, project_root: Path) -> bool:
     script that ships its own dependencies).
     """
     resolved = script_path.resolve()
-    # Script directly in the project root — probably belongs
     if resolved.parent == project_root:
         return True
 
@@ -95,7 +94,7 @@ def discover_dependencies(script_path: Path) -> list[str]:
             if deps:
                 return deps
 
-        # Don't walk above the project root
+        # Don't walk above the project root.
         if current == project_root:
             break
         parent = current.parent
@@ -103,7 +102,6 @@ def discover_dependencies(script_path: Path) -> list[str]:
             break
         current = parent
 
-    # Fallback: scan script imports
     return discover_imports(script_path)
 
 
@@ -131,12 +129,11 @@ def _parse_pyproject_deps(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     data = tomllib.loads(text)
 
-    # Standard [project.dependencies]
     deps = data.get("project", {}).get("dependencies", [])
     if deps:
         return list(deps)
 
-    # Poetry [tool.poetry.dependencies]
+    # Poetry [tool.poetry.dependencies] fallback.
     poetry_deps = data.get("tool", {}).get("poetry", {}).get("dependencies", {})
     if poetry_deps:
         return [
@@ -153,7 +150,7 @@ def _poetry_dep_to_pip(name: str, spec: str | dict) -> str:
     if isinstance(spec, str):
         if spec == "*":
             return name
-        # Poetry uses ^ and ~ constraints
+        # Translate poetry's ^ and ~ constraints to pip equivalents.
         spec = spec.replace("^", ">=").replace("~", "~=")
         return f"{name}{spec}"
     if isinstance(spec, dict):
@@ -203,10 +200,8 @@ def discover_imports(script_path: Path) -> list[str]:
     def _classify(module_name: str, local_dir: Path) -> None:
         top = module_name.split(".")[0]
 
-        # Skip stdlib
         if top in _STDLIB_MODULES:
             return
-        # Skip profine internals
         if top == "profine":
             return
 

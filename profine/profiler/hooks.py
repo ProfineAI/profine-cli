@@ -22,8 +22,6 @@ class StepLimitReached(Exception):
     """Raised by StepController when the step budget is exhausted."""
 
 
-# StepController — wraps optimizer.step()
-
 def _all_optimizer_subclasses(base: type) -> list[type]:
     """Recursively find all subclasses of an optimizer base class."""
     result: list[type] = []
@@ -103,7 +101,6 @@ class StepController:
             self.step_times_ms.append((now - self._last_step_end) * 1000)
         self._last_step_end = now
 
-        # Flush micro-batch losses into one per-step value
         if self._loss_capture is not None:
             self._loss_capture.flush_step()
 
@@ -127,8 +124,6 @@ class StepController:
                 f"after {self.steps_completed} steps"
             )
 
-
-# LossCapture — hooks Tensor.backward()
 
 class LossCapture:
     """Captures scalar loss values from backward() calls.
@@ -173,8 +168,6 @@ class LossCapture:
             torch.Tensor.backward = self._original_backward
             self._original_backward = None
 
-
-# GPUUtilizationSampler — pynvml background thread
 
 class GPUUtilizationSampler:
     """Samples GPU utilization at regular intervals via pynvml."""
@@ -225,8 +218,6 @@ class GPUUtilizationSampler:
             pass
 
 
-# DataLoaderCapture — wraps DataLoader.__init__
-
 class DataLoaderCapture:
     """Captures DataLoader configuration kwargs."""
 
@@ -263,8 +254,6 @@ class DataLoaderCapture:
             DataLoader.__init__ = self._original_init
             self._original_init = None
 
-
-# HookContext — manages all hooks together
 
 @dataclass
 class HookContext:

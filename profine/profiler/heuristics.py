@@ -22,9 +22,6 @@ from profine.schema.profile_record import (
     ProfilerEvent,
 )
 
-# Kernel categorization (driven by config/kernel_patterns.yaml)
-
-
 def _is_excluded(name: str) -> bool:
     """Check if an event is a profiler-internal marker to skip."""
     return any(p in name for p in get_exclude_patterns())
@@ -37,8 +34,6 @@ def _categorize_kernel(name: str) -> str:
             return category
     return "other"
 
-
-# GPU utilization
 
 def classify_gpu_pattern(samples: list[float]) -> str:
     if not samples:
@@ -63,8 +58,6 @@ def compute_gpu_mean(samples: list[float]) -> float:
     vals = [s / 100.0 if max(samples) > 1.0 else s for s in samples]
     return sum(vals) / len(vals) * 100.0
 
-
-# Kernel analysis
 
 def compute_top_kernels(events: list[ProfilerEvent], top_k: int = 15) -> list[KernelSummary]:
     aggregated: dict[str, dict[str, Any]] = defaultdict(
@@ -156,8 +149,6 @@ def compute_phase_breakdown(events: list[ProfilerEvent]) -> PhaseBreakdown:
     )
 
 
-# Scalar heuristics
-
 def compute_dataloader_stall_pct(events: list[ProfilerEvent], step_time_total_us: float) -> float:
     if step_time_total_us <= 0:
         return 0.0
@@ -187,7 +178,7 @@ def detect_attention_impl(events: list[ProfilerEvent]) -> str:
 
 
 def detect_precision(events: list[ProfilerEvent]) -> str:
-    # Try input_dtypes first (most reliable)
+    # input_dtypes are the most reliable precision signal.
     dtype_counts: dict[str, int] = defaultdict(int)
     for e in events:
         for dt in e.input_dtypes:

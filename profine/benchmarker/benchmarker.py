@@ -135,7 +135,6 @@ class Benchmarker:
 
         warnings: list[str] = []
 
-        # Discover dependencies once from the original script
         from profine.modal.discovery import discover_dependencies
         dependencies = discover_dependencies(path)
 
@@ -188,7 +187,6 @@ class Benchmarker:
                 "`profine_output/edit/edited_train.py` and the [optimized] errors above."
             )
 
-        # Strip warmup from both
         _strip_warmup(baseline_payload, warmup_steps)
         _strip_warmup(candidate_payload, warmup_steps)
 
@@ -216,10 +214,8 @@ class Benchmarker:
                 f"rtol {rtol} -> {eff_rtol}, atol {atol} -> {eff_atol}"
             )
 
-        # Compare
         comparison = compare_payloads(baseline_payload, candidate_payload, rtol=eff_rtol, atol=eff_atol)
 
-        # Generate report
         markdown = generate_report(
             comparison,
             optimization_name,

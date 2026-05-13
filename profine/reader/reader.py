@@ -105,19 +105,16 @@ class CodeReader:
         source = path.read_text(encoding="utf-8")
         file_name = path.name
 
-        # Step 1: deterministic extraction
         facts = extract(source, file_name)
 
-        # Step 2: LLM analysis
         record, brief = analyze(
             source, facts, provider=self.provider,
             debug_dir=debug_dir, **self._llm_kwargs,
         )
 
-        # Inject script_path into record
         record["script_path"] = str(path)
 
-        # Step 2.5: Enrich with HF Hub ground truth
+        # Enrich with HF Hub ground truth when a model id can be resolved.
         model_id = _extract_model_id(record)
         if model_id:
             from profine.reader.hf_config import enrich_record
@@ -125,7 +122,6 @@ class CodeReader:
             if upgraded:
                 print(f"  HF Hub enrichment: upgraded {', '.join(upgraded)}")
 
-        # Step 3: collect warnings for guessed fields
         warnings = _collect_warnings(record)
 
         return ReadResult(
@@ -146,20 +142,17 @@ def _extract_model_id(record: dict[str, Any]) -> str | None:
     """
     from profine.reader.hf_config import is_hf_model_id
 
-    # Direct value check
     model_var = record.get("model_variable", {})
     if isinstance(model_var, dict):
         value = model_var.get("value", "")
         if isinstance(value, str) and is_hf_model_id(value):
             return value
-        # Scan evidence snippets for a model ID
         for ev in model_var.get("evidence", []):
             snippet = ev.get("snippet", "")
             for match in re.findall(r'["\']([A-Za-z0-9_-]+/[A-Za-z0-9._-]+)["\']', snippet):
                 if is_hf_model_id(match):
                     return match
 
-    # Fallback: check model_class or model_family evidence
     for field in ("model_class", "model_family"):
         obj = record.get(field, {})
         if isinstance(obj, dict):

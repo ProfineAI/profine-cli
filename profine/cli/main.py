@@ -32,7 +32,6 @@ from profine.cli.commands import (
 from profine.cli.errors import is_debug_mode, print_user_error
 from profine.config.settings import DEFAULTS
 
-# Commands that require an LLM backend
 _LLM_COMMANDS = {"read", "profile", "interpret", "suggest", "edit", "benchmark", "run-all"}
 
 
@@ -64,11 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", help="Tool to run")
 
-    # read
     p_read = sub.add_parser("read", help="Read and analyze a training script", parents=[shared], conflict_handler="resolve")
     p_read.add_argument("script", help="Path to the training script")
 
-    # profile
     p_profile = sub.add_parser("profile", help="Profile a training script on Modal", parents=[shared], conflict_handler="resolve")
     p_profile.add_argument("script", help="Path to the training script")
     p_profile.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
@@ -78,17 +75,14 @@ def build_parser() -> argparse.ArgumentParser:
                            help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
     p_profile.add_argument("--warmstart", action="store_true", help="Reuse deployed Modal app between runs")
 
-    # interpret
     p_interpret = sub.add_parser("interpret", help="Interpret a profile into bottlenecks", parents=[shared], conflict_handler="resolve")
     p_interpret.add_argument("--profile-dir", required=True, help="Directory with profile output")
 
-    # suggest
     p_suggest = sub.add_parser("suggest", help="Suggest optimizations", parents=[shared], conflict_handler="resolve")
     p_suggest.add_argument("--interpret-dir", required=True, help="Directory with interpret output (bottleneck_report.json)")
     p_suggest.add_argument("--arch-dir", default=None, help="Directory with architecture_record.json (default: auto-detect)")
     p_suggest.add_argument("--profile-dir", default=None, help="Directory with profile output (default: auto-detect)")
 
-    # edit
     p_edit = sub.add_parser("edit", help="Apply an optimization to the source", parents=[shared], conflict_handler="resolve")
     p_edit.add_argument("script", nargs="?", default=None, help="Path to the training script (auto-detected from prior steps if omitted)")
     p_edit.add_argument("--suggestion-dir", required=True, help="Directory with suggestion output")
@@ -99,7 +93,6 @@ def build_parser() -> argparse.ArgumentParser:
                              "lands at <output>/edit/ for `profine benchmark`; "
                              "per-step artifacts go in <output>/edit/NN_<entry_id>/.")
 
-    # benchmark
     p_bench = sub.add_parser("benchmark", help="Benchmark original vs. optimized", parents=[shared], conflict_handler="resolve")
     p_bench.add_argument("script", nargs="?", default=None, help="Path to the original training script (auto-detected from prior steps if omitted)")
     p_bench.add_argument("--optimized", default=None, help="Path to the optimized script (default: <output>/edit/edited_train.py)")
@@ -117,7 +110,6 @@ def build_parser() -> argparse.ArgumentParser:
                                "Modal workspace before the optimized run, so multi-file "
                                "edits actually take effect.")
 
-    # run-all
     p_all = sub.add_parser("run-all", help="Run the full pipeline: read → profile → interpret → suggest → edit → benchmark",
                            parents=[shared], conflict_handler="resolve")
     p_all.add_argument("script", help="Path to the training script")
@@ -153,7 +145,6 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
-    # Load user preferences if provided
     user_prefs: str | None = None
     if args.prefs:
         user_prefs = Path(args.prefs).read_text(encoding="utf-8")

@@ -43,7 +43,6 @@ class InterpretResult:
         report_path = out / "bottleneck_report.json"
         brief_path = out / "bottleneck_brief.md"
 
-        # Merge deterministic summary + LLM bottleneck report
         full_report = {
             "profile_summary": self.profile_summary,
             "bottleneck_report": _report_to_dict(self.report),
@@ -97,10 +96,8 @@ class ProfileInterpreter:
         Returns:
             InterpretResult with .report, .profile_summary, and .markdown.
         """
-        # Step 1: Deterministic analysis (no LLM, pure math)
         summary = _compute_deterministic(profile_record, architecture_record)
 
-        # Step 2: LLM analysis (judgment, narrative)
         user_msg = build_interpreter_prompt(
             profile_record, architecture_record, user_preferences,
         )
@@ -110,7 +107,6 @@ class ProfileInterpreter:
         )
         report, llm_markdown = _parse_response(parsed)
 
-        # Step 3: Merge into final markdown
         markdown = _build_merged_markdown(summary, report, llm_markdown)
 
         warnings = []
@@ -133,7 +129,6 @@ def _compute_deterministic(
     """Pure-math analysis of profile data. No LLM needed."""
     summary: dict[str, Any] = {}
 
-    # Hardware context
     try:
         hw = get_hardware(record.hardware_name)
         summary["hardware"] = {
@@ -146,7 +141,6 @@ def _compute_deterministic(
         hw = None
         summary["hardware"] = {"name": record.hardware_name}
 
-    # Step timing
     median_ms = record.step_time_median_ms
     summary["step_time"] = {
         "median_ms": median_ms,
@@ -154,7 +148,6 @@ def _compute_deterministic(
         "steady_state_steps": len(record.step_times_ms),
     }
 
-    # Cost
     if hw and median_ms:
         cost_per_hr = hw.cost_per_hour
         summary["cost"] = {
@@ -162,7 +155,6 @@ def _compute_deterministic(
             "per_1k_steps": round(median_ms / 1000 * 1000 * cost_per_hr / 3600, 2),
         }
 
-    # Memory
     peak_gb = record.memory_peak_gb
     total_vram = hw.vram_gb if hw else 0
     summary["memory"] = {
@@ -172,7 +164,6 @@ def _compute_deterministic(
         "headroom_pct": round(record.memory_headroom_pct, 1),
     }
 
-    # Per-category absolute time (ms per step)
     if record.kernel_breakdown and median_ms:
         bd = record.kernel_breakdown
         summary["kernel_time_ms_per_step"] = {
@@ -186,7 +177,6 @@ def _compute_deterministic(
             "other": round(bd.other_pct * median_ms / 100),
         }
 
-    # Top kernels (truncated names)
     if record.top_kernels:
         summary["top_kernels"] = [
             {
@@ -198,7 +188,6 @@ def _compute_deterministic(
             for k in record.top_kernels[:10]
         ]
 
-    # Profile flags
     summary["profile_flags"] = {
         "precision": record.precision,
         "attention_impl": record.attention_impl,
@@ -206,7 +195,7 @@ def _compute_deterministic(
         "dataloader_stall_pct": record.dataloader_stall_pct,
     }
 
-    # Throughput (if architecture record has batch_size + context_length)
+    # Throughput when arch record has batch_size + context_length.
     if architecture_record and median_ms:
         batch_size = _arch_val(architecture_record, "dataloader", "batch_size")
         seq_len = _arch_val(architecture_record, "context_length")

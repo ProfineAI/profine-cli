@@ -167,7 +167,6 @@ class CodeEditor:
         edited_source = parsed.get("edited_source", source)
         applied = parsed.get("applied", False)
 
-        # Validate the edited entry source parses
         if applied:
             edited_source = self._validate_and_heal(edited_source)
 
@@ -217,10 +216,8 @@ class CodeEditor:
                 )
                 edited_source = source
 
-        # Compute diff for entry script
         diff = _compute_diff(source, edited_source)
 
-        # Build change entries
         changes = [
             ChangeEntry(
                 line_start=c.get("line_start", 0),

@@ -125,11 +125,9 @@ class ProfileOrchestrator:
         source = path.read_text(encoding="utf-8")
         hw = get_hardware(hardware) if isinstance(hardware, str) else hardware
 
-        # Step 1: Extract facts
         print("  [1/4] Extracting code facts...")
         facts = extract(source, path.name)
 
-        # Step 2: Instrument the script
         print("  [2/4] Instrumenting script (LLM)...")
         instrumented = self._instrumentor.instrument(
             source=source,
@@ -138,12 +136,11 @@ class ProfileOrchestrator:
             warmup_steps=warmup_steps,
         )
 
-        # Save instrumented source for debugging
         debug_dir = Path("profine_output") / "debug"
         debug_dir.mkdir(parents=True, exist_ok=True)
         (debug_dir / "instrumented.py").write_text(instrumented.source, encoding="utf-8")
 
-        # Step 3: Discover dependencies (AST → LLM validation)
+        # Discover dependencies (AST → LLM validation).
         print("  [3/4] Discovering dependencies...")
         from profine.modal.discovery import discover_dependencies, discover_project_root
         from profine.profiler.prompts import build_dependency_validation_prompt
@@ -182,7 +179,6 @@ class ProfileOrchestrator:
         except Exception as e:
             print(f"         LLM validation failed ({e}), using AST deps only")
 
-        # Step 4: Execute on Modal
         print("  [4/4] Launching on Modal...")
         from profine.modal.executor import ModalExecutor
         executor = ModalExecutor(
@@ -279,7 +275,6 @@ class ProfileOrchestrator:
                 result = ExecutionResult(success=False, error="Cancelled by user")
             last_error = "Cancelled by user"
 
-        # Step 5: Build ProfileRecord from payload
         payload = result.payload if result and result.success else {}
         record = _build_record(payload, path, hw, steps, warmup_steps)
 
@@ -287,10 +282,8 @@ class ProfileOrchestrator:
             record.status = "crash"
             record.error = last_error
 
-        # Step 6: Compute heuristics
         _enrich_with_heuristics(record, hw)
 
-        # Step 7: Generate report
         markdown = generate_report(record)
 
         warnings = []
@@ -334,12 +327,10 @@ def _build_record(
     all_step_times = payload.get("step_times_ms", [])
     steps_completed = payload.get("steps_completed", len(all_step_times))
 
-    # Detect stabilization
     effective_warmup = detect_stabilization_point(all_step_times, min_warmup=warmup_steps)
     steady_times = all_step_times[effective_warmup:]
     warmup_times = all_step_times[:effective_warmup]
 
-    # Parse profiler events
     raw_events = payload.get("profiler_events", [])
     events = parse_events_from_payload(raw_events) if isinstance(raw_events, list) else []
 
@@ -369,9 +360,9 @@ def _enrich_with_heuristics(record: ProfileRecord, hardware: HardwareConfig) -> 
     events = record.profiler_events
     step_total_us = sum(record.step_times_ms) * 1000 if record.step_times_ms else 0
 
-    # Trim init/teardown idle periods, compute summary, then discard raw samples
+    # Trim init/teardown idle periods (leading/trailing zero util),
+    # compute summary, then discard raw samples.
     samples = record.gpu_util_samples
-    # Strip leading/trailing zeros (model init + post-training teardown)
     start = 0
     while start < len(samples) and samples[start] == 0.0:
         start += 1
@@ -390,7 +381,6 @@ def _enrich_with_heuristics(record: ProfileRecord, hardware: HardwareConfig) -> 
         for i in range(0, len(trimmed), chunk)
     ]
 
-    # Compute memory headroom before converting to GB
     record.memory_headroom_pct = compute_memory_headroom(record.memory_peak_bytes, hardware.vram_gb)
 
     # Compact memory samples: keep unique values only (typically all the same after warmup)
@@ -539,5 +529,4 @@ def _record_to_dict(record: ProfileRecord) -> dict[str, Any]:
     """Convert a ProfileRecord to a JSON-serializable dict."""
     from dataclasses import asdict
     d = asdict(record)
-    # ProfilerEvent and other nested dataclasses are already dicts via asdict
     return d

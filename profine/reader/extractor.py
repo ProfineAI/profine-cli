@@ -95,8 +95,6 @@ class CodeFacts:
     checkpoint_calls: list[CallFact] = field(default_factory=list)
 
 
-# Pattern sets for classification
-
 from profine.config.yaml_loader import (
     get_dataloader_patterns as _get_dataloader_patterns,
     get_distributed_patterns as _get_distributed_patterns,
@@ -170,8 +168,6 @@ class _FactVisitor(ast.NodeVisitor):
         self._source_lines = source_lines
         self._file = file_path
 
-    # Imports
-
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self.facts.imports.append(ImportFact(
@@ -193,8 +189,6 @@ class _FactVisitor(ast.NodeVisitor):
         ))
         self.generic_visit(node)
 
-    # Classes
-
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         bases = [_resolve_call_name(b) if isinstance(b, (ast.Name, ast.Attribute)) else _short_repr(b)
                  for b in node.bases]
@@ -205,10 +199,8 @@ class _FactVisitor(ast.NodeVisitor):
             line=node.lineno,
             method_names=methods,
         ))
-        # visit children to catch calls inside class bodies
+        # Visit children to catch calls inside class bodies.
         self.generic_visit(node)
-
-    # Functions
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._record_function(node)
@@ -220,7 +212,7 @@ class _FactVisitor(ast.NodeVisitor):
 
     def _record_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         decorators = [_short_repr(d) for d in node.decorator_list]
-        # is_method if parent is a ClassDef — approximate via first arg 'self'/'cls'
+        # Approximate is_method via first arg 'self'/'cls' since we don't track parents here.
         args = node.args
         is_method = bool(args.args and args.args[0].arg in ("self", "cls"))
         self.facts.functions.append(FunctionFact(
@@ -229,8 +221,6 @@ class _FactVisitor(ast.NodeVisitor):
             decorators=decorators,
             is_method=is_method,
         ))
-
-    # Assignments
 
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
@@ -257,14 +247,10 @@ class _FactVisitor(ast.NodeVisitor):
                 break
         self._record_call(node.value, node.lineno, assigned_to)
 
-    # Bare calls
-
     def visit_Expr(self, node: ast.Expr) -> None:
         if isinstance(node.value, ast.Call):
             self._record_call(node.value, node.lineno, None)
         self.generic_visit(node)
-
-    # Call recording and classification
 
     def _record_call(self, call: ast.Call, line: int, assigned_to: str | None) -> None:
         name = _resolve_call_name(call.func)
@@ -284,43 +270,33 @@ class _FactVisitor(ast.NodeVisitor):
         name = cf.name
         leaf = _leaf_name(name)
 
-        # Model loaders
         if leaf == "from_pretrained" or leaf.startswith("AutoModel"):
             self.facts.model_loader_calls.append(cf)
 
-        # Optimizers
         if leaf in _OPTIMIZER_NAMES:
             self.facts.optimizer_calls.append(cf)
 
-        # Schedulers
         if leaf in _SCHEDULER_NAMES or _matches_any(name, _SCHEDULER_NAMES):
             self.facts.scheduler_calls.append(cf)
 
-        # Loss
         if leaf in _LOSS_NAMES or _matches_any(name, _LOSS_NAMES):
             self.facts.loss_calls.append(cf)
 
-        # DataLoader
         if leaf in _DATALOADER_PATTERNS or _matches_any(name, _DATALOADER_PATTERNS):
             self.facts.dataloader_calls.append(cf)
 
-        # Distributed
         if _matches_any(name, _DISTRIBUTED_PATTERNS):
             self.facts.distributed_calls.append(cf)
 
-        # torch.compile
         if name == "torch.compile" or leaf == "compile" and "torch" in name:
             self.facts.compile_calls.append(cf)
 
-        # Autocast
         if leaf == "autocast" or "autocast" in name.lower():
             self.facts.autocast_calls.append(cf)
 
-        # GradScaler
         if leaf == "GradScaler" or "GradScaler" in name:
             self.facts.grad_scaler_calls.append(cf)
 
-        # Gradient checkpointing
         if "checkpoint" in name.lower() and ("gradient" in name.lower() or "activation" in name.lower()):
             self.facts.checkpoint_calls.append(cf)
         if leaf == "gradient_checkpointing_enable":
@@ -334,8 +310,6 @@ class _FactVisitor(ast.NodeVisitor):
         if leaf in _LOSS_NAMES:
             if cf not in self.facts.loss_calls:
                 self.facts.loss_calls.append(cf)
-
-    # With statements (context managers)
 
     def visit_With(self, node: ast.With) -> None:
         for item in node.items:
