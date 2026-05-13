@@ -12,7 +12,6 @@ the traceback through (real bugs should still surface during dev).
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 
 def format_user_error(exc: BaseException) -> tuple[str, int] | None:
@@ -49,11 +48,13 @@ def format_user_error(exc: BaseException) -> tuple[str, int] | None:
             2,
         )
 
-    # File not found — script path that doesn't exist
+    # File not found — script path that doesn't exist.
+    # Render exc.filename directly (no Path round-trip) so the displayed path
+    # keeps the separators the user passed; this also keeps the cross-platform
+    # test assertion (which uses forward slashes) stable on Windows.
     if isinstance(exc, FileNotFoundError):
-        target = Path(exc.filename) if exc.filename else None
-        if target:
-            return (f"File not found: {target}", 2)
+        if exc.filename:
+            return (f"File not found: {exc.filename}", 2)
         return (f"File not found: {msg}", 2)
 
     # Permission denied — output dir that's not writable
@@ -70,6 +71,20 @@ def format_user_error(exc: BaseException) -> tuple[str, int] | None:
         return (
             f"{msg} Run `profine list-hardware` for valid presets, or pass a custom "
             f"HardwareConfig via the API.",
+            2,
+        )
+
+    # OpenAI/httpx connection failure — typically `--provider local` with no
+    # server listening. Surfaces as openai.APIConnectionError (which wraps
+    # httpx.ConnectError) or a bare httpx.ConnectError.
+    if name in ("APIConnectionError", "ConnectError", "ConnectionRefusedError") or (
+        "connection error" in low or "connection refused" in low or "all connection attempts failed" in low
+    ):
+        return (
+            "Could not connect to the LLM endpoint. If you're using --provider local, "
+            "make sure your OpenAI-compatible server (Ollama, vLLM, LM Studio, ...) is "
+            "running and reachable. Default base URL is http://localhost:11434/v1 "
+            "(Ollama); override with --base-url or PROFINE_LOCAL_BASE_URL.",
             2,
         )
 

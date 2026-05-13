@@ -35,33 +35,62 @@ from profine.config.settings import DEFAULTS
 _LLM_COMMANDS = {"read", "profile", "interpret", "suggest", "edit", "benchmark", "run-all"}
 
 
+def _ensure_utf8_stdout() -> None:
+    """Reconfigure stdout/stderr to UTF-8 so non-ASCII help text (arrows,
+    em-dashes) doesn't crash on Windows consoles defaulting to CP1252.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
+def _add_shared(p: argparse.ArgumentParser, *, suppress: bool) -> None:
+    """Attach the shared flags to `p`.
+
+    `suppress=True` makes the argparse defaults SUPPRESS, so the action does
+    not write to the namespace when the user didn't pass the flag. We use
+    that for subparsers so that a flag set at the top level (e.g.
+    `profine --provider local read x`) isn't clobbered when the subparser
+    parses into its fresh namespace and copies attrs back. The top-level
+    parser keeps real defaults so the value is always present after parse.
+    """
+    NONE = argparse.SUPPRESS if suppress else None
+    OUT = argparse.SUPPRESS if suppress else "profine_output"
+    PROV = argparse.SUPPRESS if suppress else "openai"
+    p.add_argument("--provider", default=PROV,
+                   choices=["openai", "anthropic", "local"],
+                   help="LLM provider: 'openai', 'anthropic', or 'local' (OpenAI-compatible local server)")
+    p.add_argument("--api-key", default=NONE, help="API key override")
+    p.add_argument("--model", default=NONE, help="Model name override (required for --provider local)")
+    p.add_argument("--base-url", default=NONE,
+                   help="OpenAI-compatible endpoint URL (for --provider local; defaults to "
+                        "http://localhost:11434/v1 for Ollama). Env: PROFINE_LOCAL_BASE_URL")
+    p.add_argument("--seed", type=int, default=NONE,
+                   help="Seed for the LLM provider (best-effort; OpenAI honors it, Anthropic "
+                        "ignores it and relies on temperature=0). Use to make optimization "
+                        "rankings reproducible across runs.")
+    p.add_argument("--output", "-o", default=OUT, help="Output directory")
+    p.add_argument("--prefs", default=NONE, help="Path to user preferences markdown")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    # Shared flags live in a parent parser so they work before OR after the
-    # subcommand (e.g. `profine read train.py -o out` and
-    # `profine -o out read train.py` both work).
-    shared = argparse.ArgumentParser(add_help=False)
-    shared.add_argument("--provider", default="openai",
-                        choices=["openai", "anthropic", "local"],
-                        help="LLM provider: 'openai', 'anthropic', or 'local' (OpenAI-compatible local server)")
-    shared.add_argument("--api-key", default=None, help="API key override")
-    shared.add_argument("--model", default=None, help="Model name override (required for --provider local)")
-    shared.add_argument("--base-url", default=None,
-                        help="OpenAI-compatible endpoint URL (for --provider local; defaults to "
-                             "http://localhost:11434/v1 for Ollama). Env: PROFINE_LOCAL_BASE_URL")
-    shared.add_argument("--seed", type=int, default=None,
-                        help="Seed for the LLM provider (best-effort; OpenAI honors it, Anthropic "
-                             "ignores it and relies on temperature=0). Use to make optimization "
-                             "rankings reproducible across runs.")
-    shared.add_argument("--output", "-o", default="profine_output", help="Output directory")
-    shared.add_argument("--prefs", default=None, help="Path to user preferences markdown")
+    # Shared flags work before OR after the subcommand. Subparsers use
+    # SUPPRESS defaults so they don't clobber values set at the top level.
+    shared_suppress = argparse.ArgumentParser(add_help=False)
+    _add_shared(shared_suppress, suppress=True)
 
     parser = argparse.ArgumentParser(
         prog="profine",
         description="Agentic ML Training Optimizer",
-        parents=[shared],
     )
+    _add_shared(parser, suppress=False)
 
     sub = parser.add_subparsers(dest="command", help="Tool to run")
+    shared = shared_suppress
 
     p_read = sub.add_parser("read", help="Read and analyze a training script", parents=[shared], conflict_handler="resolve")
     p_read.add_argument("script", help="Path to the training script")
@@ -128,6 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_stdout()
     try:
         # When profine is installed as a console script, find_dotenv()'s default
         # (usecwd=False) walks up from the entry-script's directory — e.g.

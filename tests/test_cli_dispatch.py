@@ -99,6 +99,77 @@ def test_format_user_error_llm_json_parse():
     assert "malformed JSON" in msg
 
 
+def test_format_user_error_connection_refused_builtin():
+    # Bare ConnectionRefusedError (raised by httpx when local server is down)
+    exc = ConnectionRefusedError(61, "Connection refused")
+    formatted = format_user_error(exc)
+    assert formatted is not None
+    msg, code = formatted
+    assert "--provider local" in msg
+    assert "--base-url" in msg
+    assert "localhost:11434" in msg
+    assert code == 2
+
+
+def test_format_user_error_openai_api_connection_error():
+    # Simulates openai.APIConnectionError without depending on the openai SDK
+    class APIConnectionError(Exception):
+        pass
+
+    exc = APIConnectionError("Connection error.")
+    formatted = format_user_error(exc)
+    assert formatted is not None
+    msg, code = formatted
+    assert "--base-url" in msg
+    assert code == 2
+
+
+def test_format_user_error_httpx_connect_error():
+    class ConnectError(Exception):
+        pass
+
+    exc = ConnectError("All connection attempts failed")
+    formatted = format_user_error(exc)
+    assert formatted is not None
+    msg, _ = formatted
+    assert "OpenAI-compatible server" in msg
+
+
+def test_parser_provider_flag_before_subcommand_is_preserved():
+    # Regression: subparsers used to clobber the top-level --provider value
+    # back to the default 'openai' because parents=[shared] copied the
+    # argparse defaults into subparser actions.
+    parser = build_parser()
+    args = parser.parse_args(
+        ["--provider", "local", "--model", "llama3.1:8b", "read", "train.py"]
+    )
+    assert args.provider == "local"
+    assert args.model == "llama3.1:8b"
+
+
+def test_parser_provider_flag_after_subcommand_still_works():
+    parser = build_parser()
+    args = parser.parse_args(
+        ["read", "--provider", "local", "--model", "llama3.1:8b", "train.py"]
+    )
+    assert args.provider == "local"
+    assert args.model == "llama3.1:8b"
+
+
+def test_parser_provider_defaults_when_unset():
+    parser = build_parser()
+    args = parser.parse_args(["read", "train.py"])
+    assert args.provider == "openai"
+    assert args.model is None
+    assert args.output == "profine_output"
+
+
+def test_parser_output_flag_before_subcommand_is_preserved():
+    parser = build_parser()
+    args = parser.parse_args(["-o", "custom_out", "read", "train.py"])
+    assert args.output == "custom_out"
+
+
 def test_format_user_error_unknown_returns_none():
     # Unrecognised exception types must signal "unknown" so the caller re-raises
     assert format_user_error(KeyError("random")) is None
