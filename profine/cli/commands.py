@@ -3,11 +3,128 @@
 from __future__ import annotations
 
 import json
+import os
 from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
 from profine.cli import _console as ui
+
+
+def _resolve_client_version() -> str:
+    """Best-effort lookup of the installed profine package version.
+
+    Returns an empty string when the package isn't installed (e.g.
+    dev runs from a non-editable checkout) so telemetry still works;
+    the version is informational, not required.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        return version("profine")
+    except PackageNotFoundError:
+        return ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _emit_telemetry_after(
+    args: Namespace,
+    output_dir: Path,
+    pipeline_callable,
+) -> int:
+    """Common wrapper: build a recorder, run the pipeline, emit telemetry,
+    close the recorder. Used by cmd_profile, cmd_benchmark, cmd_run_all
+    so each contributes a row to the flywheel exactly once."""
+    from profine.telemetry import emit_run
+    from profine.telemetry.builder import build_recorder
+
+    recorder = build_recorder(args, client_version=_resolve_client_version())
+    try:
+        return pipeline_callable()
+    finally:
+        try:
+            emit_run(output_dir, recorder, hardware_name=getattr(args, "hardware", None))
+        except Exception:  # noqa: BLE001 — telemetry must never crash the run
+            pass
+        recorder.close()
+
+
+def cmd_env(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    """Print every PROFINE_* env var the codebase reads, with its
+    current resolved value. Secrets are redacted."""
+    from profine.env_vars import by_category
+
+    grouped = by_category()
+    for category in sorted(grouped):
+        print(f"\n# {category}")
+        print("-" * (len(category) + 2))
+        for entry in grouped[category]:
+            value = entry.resolved_by()
+            if value is None and entry.default is not None:
+                value = f"(default) {entry.default}"
+            elif value is None:
+                value = "(unset)"
+            print(f"  {entry.name}")
+            print(f"    description : {entry.description}")
+            print(f"    current     : {value}")
+            if entry.referenced_in:
+                refs = ", ".join(entry.referenced_in[:3])
+                if len(entry.referenced_in) > 3:
+                    refs += f", +{len(entry.referenced_in) - 3} more"
+                print(f"    referenced  : {refs}")
+    print()
+    return 0
+
+
+def cmd_telemetry(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    """Manage anonymous telemetry consent.
+
+    `output_dir` and `user_prefs` are unused here — the subcommand
+    only touches `~/.profine/telemetry_consent.json`. They're in the
+    signature for dispatcher symmetry with every other cmd_*.
+    """
+    from profine.telemetry.consent import (
+        consent_path,
+        env_opted_out,
+        load_consent,
+        save_consent,
+    )
+
+    action = args.action
+
+    if action == "status":
+        record = load_consent()
+        if record is None:
+            print("Telemetry consent: not yet decided.")
+            print("Next interactive `profine` run will prompt you.")
+        elif record.granted:
+            print(f"Telemetry consent: GRANTED (install_id: {record.install_id})")
+            print(f"Stored at: {consent_path()}")
+        else:
+            print("Telemetry consent: DECLINED")
+            print(f"Stored at: {consent_path()}")
+        if env_opted_out():
+            print("Note: PROFINE_NO_TELEMETRY is set in the environment — "
+                  "telemetry is disabled regardless of the stored consent.")
+        if os.environ.get("PROFINE_API_KEY"):
+            print("Note: PROFINE_API_KEY is set — runs send paid telemetry "
+                  "via that key, bypassing OSS consent.")
+        return 0
+
+    if action == "enable":
+        record = save_consent(True)
+        print(f"Telemetry enabled. install_id: {record.install_id}")
+        print(f"Stored at: {consent_path()}")
+        return 0
+
+    if action == "disable":
+        save_consent(False)
+        print("Telemetry disabled. No data will be sent.")
+        print(f"Stored at: {consent_path()}")
+        return 0
+
+    print(f"Unknown telemetry action: {action}")
+    return 1
 
 
 def cmd_read(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
@@ -32,6 +149,13 @@ def cmd_read(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
 
 
 def cmd_profile(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    return _emit_telemetry_after(
+        args, output_dir,
+        lambda: _cmd_profile_body(args, output_dir, user_prefs),
+    )
+
+
+def _cmd_profile_body(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.profiler import profile
     from profine.schema.hardware import ModalRuntimeConfig
     from profine.config.settings import DEFAULTS
@@ -338,6 +462,13 @@ def _unified_diff(
 
 
 def cmd_benchmark(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    return _emit_telemetry_after(
+        args, output_dir,
+        lambda: _cmd_benchmark_body(args, output_dir, user_prefs),
+    )
+
+
+def _cmd_benchmark_body(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     from profine.benchmarker.benchmarker import Benchmarker
     from profine.schema.hardware import ModalRuntimeConfig
     from profine.config.settings import DEFAULTS
@@ -601,6 +732,15 @@ def _dict_to_candidate(d: dict[str, Any]) -> Any:
 
 def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     """Run the full pipeline: read → profile → interpret → suggest → edit → benchmark."""
+    return _emit_telemetry_after(
+        args, output_dir,
+        lambda: _cmd_run_all_pipeline(args, output_dir, user_prefs),
+    )
+
+
+def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    """Internal pipeline body. Same logic as before; recorder wrapping
+    lives in cmd_run_all() so this stays focused on orchestration."""
     script = args.script
     steps = [
         ("read", "Reading script"),

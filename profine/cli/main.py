@@ -28,6 +28,8 @@ from profine.cli.commands import (
     cmd_edit,
     cmd_benchmark,
     cmd_run_all,
+    cmd_telemetry,
+    cmd_env,
 )
 from profine.cli.errors import is_debug_mode, print_user_error
 from profine.config.settings import DEFAULTS
@@ -75,6 +77,15 @@ def _add_shared(p: argparse.ArgumentParser, *, suppress: bool) -> None:
                         "rankings reproducible across runs.")
     p.add_argument("--output", "-o", default=OUT, help="Output directory")
     p.add_argument("--prefs", default=NONE, help="Path to user preferences markdown")
+    # Anonymous telemetry opt-out. The first interactive run will prompt
+    # for consent if neither this flag nor PROFINE_NO_TELEMETRY is set;
+    # paying customers' opt-out is server-side, this flag is the OSS lever.
+    if suppress:
+        p.add_argument("--no-telemetry", action="store_true", default=argparse.SUPPRESS,
+                       help="Disable anonymous telemetry for this invocation")
+    else:
+        p.add_argument("--no-telemetry", action="store_true", default=False,
+                       help="Disable anonymous telemetry for this invocation")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -153,6 +164,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--rtol", type=float, default=1e-2, help="Loss relative tolerance for correctness")
     p_all.add_argument("--atol", type=float, default=1e-4, help="Loss absolute tolerance for correctness")
 
+    # telemetry — view/toggle anonymous data collection
+    p_telem = sub.add_parser(
+        "telemetry",
+        help="Manage anonymous telemetry consent",
+        parents=[shared],
+        conflict_handler="resolve",
+    )
+    p_telem.add_argument(
+        "action",
+        choices=["status", "enable", "disable"],
+        help="status: show current state; enable/disable: change OSS consent",
+    )
+
+    # env — print all PROFINE_* env vars with their resolved values
+    sub.add_parser(
+        "env",
+        help="Show every PROFINE_* env var profine reads (with current values)",
+        parents=[shared],
+        conflict_handler="resolve",
+    )
+
     return parser
 
 
@@ -189,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
         "edit": cmd_edit,
         "benchmark": cmd_benchmark,
         "run-all": cmd_run_all,
+        "telemetry": cmd_telemetry,
+        "env": cmd_env,
     }
 
     # Check for API key before running any LLM command. The "local" provider talks
