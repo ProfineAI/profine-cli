@@ -2,7 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/profine.svg)](https://pypi.org/project/profine/)
 [![CI](https://github.com/ProfineAI/profine-cli/actions/workflows/test.yml/badge.svg)](https://github.com/ProfineAI/profine-cli/actions/workflows/test.yml)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/pypi/pyversions/profine.svg)](https://pypi.org/project/profine/)
 
 **Check us out at** [profine.ai](https://profine.ai/)
@@ -229,4 +229,4 @@ All data tables (hardware, optimization catalog, kernel patterns, extractor patt
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
