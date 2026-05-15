@@ -2,6 +2,21 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — 2026-05-15
+
+### Added
+- **Anonymous, opt-in telemetry.** The first interactive run of any `profine` command prompts you to share anonymous run statistics. Saying yes contributes a small bucketed signature to the shared optimization-priors flywheel: arch class (e.g. `transformer-decoder`), parameter bucket (e.g. `1B-7B`), hardware class (e.g. `1x_a100`), precision, optimizer family, plus per-run profile stats (step time p50/p95, GPU util, memory peak, primary bottleneck) and per-optimization outcomes (speedup factor, success, crash class). **What is never sent: source code, dataset paths, model checkpoints, file paths, raw exception text, identifying hyperparameter values.** A single explicit allowlist (`profine/telemetry/fields.py`) gates everything that leaves the process. Saying no is a silent no-op; the CLI works identically.
+- **`profine telemetry` subcommand.** `status` shows your current consent, where the file lives, and whether environment overrides (`PROFINE_NO_TELEMETRY`, `PROFINE_API_KEY`) are active. `enable` and `disable` toggle the OSS consent file (`~/.profine/telemetry_consent.json`).
+- **`--no-telemetry` shared flag.** Disable telemetry for a single invocation without changing the stored consent. Works before or after the subcommand.
+- **`PROFINE_NO_TELEMETRY=1` env var.** Same effect as `--no-telemetry`, useful for CI and scripts.
+
+### Changed
+- **License: MIT → Apache 2.0** (carried forward from 0.3.6 release notes; no change since 0.3.5 from the user's perspective beyond the additional patent grant).
+
+### Notes
+- This release does not change the behaviour of any existing command. Telemetry is purely additive and off by default until you grant consent.
+- Paying customers configure telemetry through `PROFINE_API_KEY` and the server-side opt-out toggle; OSS consent is bypassed when that key is set.
+
 ## [0.3.5] — 2026-05-12
 
 ### Fixed
