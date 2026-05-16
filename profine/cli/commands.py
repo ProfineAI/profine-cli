@@ -34,11 +34,20 @@ def _emit_telemetry_after(
 ) -> int:
     """Common wrapper: build a recorder, run the pipeline, emit telemetry,
     close the recorder. Used by cmd_profile, cmd_benchmark, cmd_run_all
-    so each contributes a row to the flywheel exactly once."""
+    so each contributes a row to the flywheel exactly once.
+
+    If telemetry is enabled but the read step hasn't produced an
+    architecture_record.json yet (common when the user invokes
+    `profine profile` standalone), we run the reader first so the
+    fingerprint can be computed at emit time. Skipped entirely when
+    telemetry is off so opted-out users never pay the LLM cost.
+    """
     from profine.telemetry import emit_run
     from profine.telemetry.builder import build_recorder
 
     recorder = build_recorder(args, client_version=_resolve_client_version())
+    if recorder.enabled:
+        _ensure_read_output_for_telemetry(args, output_dir)
     try:
         return pipeline_callable()
     finally:
@@ -47,6 +56,45 @@ def _emit_telemetry_after(
         except Exception:  # noqa: BLE001 — telemetry must never crash the run
             pass
         recorder.close()
+
+
+def _ensure_read_output_for_telemetry(args: Namespace, output_dir: Path) -> None:
+    """Run cmd_read upfront if no architecture_record.json exists.
+
+    `emit_run` needs the architecture record to build a fingerprint;
+    without it the run can't contribute to priors. Calling read here
+    fills the gap for `profine profile` / `profine benchmark` users
+    who skip the explicit read step. Idempotent (no-op when the file
+    is already on disk).
+
+    Failures are silent — a missing OPENAI_API_KEY or LLM error here
+    simply means this run won't contribute telemetry. We never crash
+    the calling pipeline because of the reader.
+    """
+    arch_path = output_dir / "read" / "architecture_record.json"
+    if arch_path.exists():
+        return
+
+    script = getattr(args, "script", None)
+    if not script or not Path(script).exists():
+        return
+
+    print("  [telemetry] running reader for fingerprint…")
+    read_args = Namespace(
+        script=script,
+        provider=getattr(args, "provider", "openai"),
+        api_key=getattr(args, "api_key", None),
+        model=getattr(args, "model", None),
+        base_url=getattr(args, "base_url", None),
+        seed=getattr(args, "seed", None),
+        output=getattr(args, "output", "profine_output"),
+        prefs=getattr(args, "prefs", None),
+    )
+    try:
+        cmd_read(read_args, output_dir, None)
+    except Exception as e:  # noqa: BLE001
+        print(f"  [telemetry] reader failed ({type(e).__name__}); "
+              "telemetry will be skipped for this run.")
 
 
 def cmd_env(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
