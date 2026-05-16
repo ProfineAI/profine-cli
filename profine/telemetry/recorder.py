@@ -109,6 +109,10 @@ class TelemetryRecorder:
         self._profile_stats: dict[str, Any] | None = None
         self._lock = threading.Lock()
         self._closed = False
+        # Track in-flight flush threads so close() can join them before
+        # the process exits. Daemon threads die on interpreter shutdown,
+        # which raced the HTTP POST in earlier behavior.
+        self._flush_threads: list[threading.Thread] = []
 
     # ----- public API ----------------------------------------------------
 
@@ -187,9 +191,11 @@ class TelemetryRecorder:
     def flush(self) -> None:
         """Send the accumulated batch to the backend in a daemon thread.
 
-        Returns immediately; does not block on the network. Safe to
-        call multiple times during a single run; each call sends only
-        the outcomes accumulated since the previous flush.
+        Returns immediately; does not block on the network. The thread
+        handle is kept on self._flush_threads so `close()` can wait
+        briefly for in-flight POSTs to finish before the main process
+        exits (daemon threads die on exit, so without the join the
+        POST is racing the interpreter shutdown).
         """
         if not self._enabled:
             return
@@ -203,13 +209,26 @@ class TelemetryRecorder:
             daemon=True,
         )
         thread.start()
+        with self._lock:
+            self._flush_threads.append(thread)
 
     def close(self) -> None:
-        """Final flush. Idempotent; subsequent calls are no-ops."""
+        """Final flush, then wait briefly for in-flight POSTs.
+
+        Idempotent. Joins each flush thread with a per-thread timeout
+        so a slow backend can't hang the CLI on exit; defaults to
+        `_HTTP_TIMEOUT_SECONDS + 1` per outstanding flush.
+        """
         if self._closed:
             return
         self._closed = True
         self.flush()
+        # Snapshot so we can release the lock while joining (joins block).
+        with self._lock:
+            threads = list(self._flush_threads)
+        join_timeout = _HTTP_TIMEOUT_SECONDS + 1.0
+        for t in threads:
+            t.join(timeout=join_timeout)
 
     # ----- internal ------------------------------------------------------
 

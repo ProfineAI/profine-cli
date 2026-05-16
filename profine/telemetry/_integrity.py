@@ -53,7 +53,7 @@ MANIFEST: Final[dict[str, str]] = {
     "fields.py": "130514e10372a6759907d94a132f1b17df74c386cbbdb060b895eeb2319be460",
     "fingerprint.py": "22c337757717501a2024f3c612650200138c79c788d24d2bd2d9b54405c27510",
     "priors.py": "6efe4ba19d6a64e01b3ad62eed67c43b504f6d8218f93d04b5cb177e46db7c1c",
-    "recorder.py": "9fab03b1adfe25e667b77c55937575e3fd20de2902893cc6747f861bfbd6ed0d",
+    "recorder.py": "9945fb709152d44892fd832ab84848d567ce316d3b73f04128f51037bb82bd0d",
 }
 # ---- END GENERATED MANIFEST ----
 
