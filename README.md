@@ -42,6 +42,21 @@ Requires:
 - A [Modal](https://modal.com) account (GPU execution backend)
 - An LLM. OpenAI, Anthropic, **or any OpenAI-compatible local server** (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
 
+The fastest path is `profine auth login` — an interactive prompt that
+saves your keys to `~/.profine/auth.json` (chmod 0600). Every `profine`
+command picks them up automatically:
+
+```bash
+profine auth login        # paste in MODAL_*, OPENAI/ANTHROPIC, HF_TOKEN
+profine auth status       # show what's saved (redacted)
+profine auth set OPENAI_API_KEY sk-...     # one-off set
+profine auth logout                         # clear all saved keys
+profine auth logout OPENAI_API_KEY          # clear one
+```
+
+Environment variables still work and always win over the saved file
+(so CI and one-off `KEY=... profine ...` invocations keep working):
+
 ```bash
 export MODAL_TOKEN_ID=...
 export MODAL_TOKEN_SECRET=...

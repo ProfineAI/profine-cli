@@ -30,6 +30,7 @@ from profine.cli.commands import (
     cmd_run_all,
     cmd_telemetry,
     cmd_env,
+    cmd_auth,
 )
 from profine.cli.errors import is_debug_mode, print_user_error
 from profine.config.settings import DEFAULTS
@@ -185,6 +186,28 @@ def build_parser() -> argparse.ArgumentParser:
         conflict_handler="resolve",
     )
 
+    # auth — manage saved API keys in ~/.profine/auth.json
+    p_auth = sub.add_parser(
+        "auth",
+        help="Save API keys to ~/.profine/auth.json so you don't have to export env vars",
+        parents=[shared],
+        conflict_handler="resolve",
+    )
+    p_auth.add_argument(
+        "action",
+        choices=["login", "status", "set", "logout"],
+        help=(
+            "login: interactive paste flow for all credentials; "
+            "status: show what's saved (redacted); "
+            "set: save one credential (use with KEY [VALUE]); "
+            "logout: clear one credential, or all if no KEY given"
+        ),
+    )
+    p_auth.add_argument("key", nargs="?", default=None,
+                        help="Credential name (for `set` and `logout`)")
+    p_auth.add_argument("value", nargs="?", default=None,
+                        help="Credential value (for `set`; prompted if omitted)")
+
     return parser
 
 
@@ -199,6 +222,12 @@ def main(argv: list[str] | None = None) -> int:
         load_dotenv(find_dotenv(usecwd=True))
     except ImportError:
         pass
+
+    # Fill in unset credentials from ~/.profine/auth.json. Env vars
+    # (including anything load_dotenv just set) win — apply_to_env
+    # only fills holes.
+    from profine.auth import apply_to_env
+    apply_to_env()
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -223,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         "run-all": cmd_run_all,
         "telemetry": cmd_telemetry,
         "env": cmd_env,
+        "auth": cmd_auth,
     }
 
     # Check for API key before running any LLM command. The "local" provider talks
@@ -242,15 +272,17 @@ def main(argv: list[str] | None = None) -> int:
             if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
                 print("Error: No OpenAI API key found.\n")
                 print("Set it with one of:")
+                print("  profine auth login                 (saves to ~/.profine/auth.json)")
                 print("  export OPENAI_API_KEY=sk-...")
-                print("  python -m profine --api-key sk-... <command>")
+                print("  profine --api-key sk-... <command>")
                 print("\nOr switch to Anthropic (--provider anthropic) or a local LLM (--provider local).")
                 return 1
             if provider == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
                 print("Error: No Anthropic API key found.\n")
                 print("Set it with one of:")
+                print("  profine auth login                 (saves to ~/.profine/auth.json)")
                 print("  export ANTHROPIC_API_KEY=sk-ant-...")
-                print("  python -m profine --api-key sk-ant-... <command>")
+                print("  profine --api-key sk-ant-... <command>")
                 print("\nOr switch to OpenAI (--provider openai) or a local LLM (--provider local).")
                 return 1
 

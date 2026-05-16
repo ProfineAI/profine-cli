@@ -13,6 +13,11 @@ Two purposes:
 
 Categories are presentation-only. Resolved value is computed lazily
 so importing this module has no side effects.
+
+Note: any var listed in profine.auth.MANAGED_KEYS can also be saved
+to ~/.profine/auth.json via `profine auth login`. The CLI fills
+unset env vars from that file at startup; an explicit env var always
+wins.
 """
 
 from __future__ import annotations

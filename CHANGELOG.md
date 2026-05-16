@@ -2,9 +2,11 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
-## [0.4.0] — 2026-05-15
+## [0.4.0] — 2026-05-16
 
 ### Added
+- **`profine auth` — saved API keys.** Paste your credentials once with `profine auth login` and every subsequent command picks them up — no more re-exporting env vars in every shell. Keys live in `~/.profine/auth.json` (chmod 0600, honors `PROFINE_HOME`). Manages `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PROFINE_API_KEY`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`, and `HF_TOKEN`. Subcommands: `login` (interactive `getpass` paste flow), `status` (redacted listing), `set KEY [VALUE]`, `logout [KEY]`. The environment always wins on conflict, so CI and one-off `KEY=… profine …` invocations keep working unchanged.
+- **Missing-key errors now suggest `profine auth login`** as the first option, alongside `export` and `--api-key`.
 - **Anonymous, opt-in telemetry.** The first interactive run of any `profine` command prompts you to share anonymous run statistics. Saying yes contributes a small bucketed signature to the shared optimization-priors flywheel: arch class (e.g. `transformer-decoder`), parameter bucket (e.g. `1B-7B`), hardware class (e.g. `1x_a100`), precision, optimizer family, plus per-run profile stats (step time p50/p95, GPU util, memory peak, primary bottleneck) and per-optimization outcomes (speedup factor, success, crash class). **What is never sent: source code, dataset paths, model checkpoints, file paths, raw exception text, identifying hyperparameter values.** A single explicit allowlist (`profine/telemetry/fields.py`) gates everything that leaves the process. Saying no is a silent no-op; the CLI works identically.
 - **`profine telemetry` subcommand.** `status` shows your current consent, where the file lives, and whether environment overrides (`PROFINE_NO_TELEMETRY`, `PROFINE_API_KEY`) are active. `enable` and `disable` toggle the OSS consent file (`~/.profine/telemetry_consent.json`).
 - **`--no-telemetry` shared flag.** Disable telemetry for a single invocation without changing the stored consent. Works before or after the subcommand.

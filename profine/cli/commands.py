@@ -124,6 +124,98 @@ def cmd_env(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     return 0
 
 
+def cmd_auth(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
+    """Manage saved API keys in ~/.profine/auth.json.
+
+    `output_dir` and `user_prefs` are unused; kept for dispatcher symmetry.
+    """
+    import getpass
+
+    from profine import auth
+
+    action = args.action
+
+    if action == "status":
+        saved = auth.load()
+        path = auth.auth_path()
+        if not saved:
+            print(f"No saved credentials. ({path} is empty or missing.)")
+            print("Run `profine auth login` to add some.")
+            return 0
+        print(f"Saved credentials ({path}):")
+        for name in auth.MANAGED_KEYS:
+            if name in saved:
+                env_set = bool(os.environ.get(name))
+                marker = "  (env var also set — env wins)" if env_set else ""
+                print(f"  {name:<22} {auth.redact(saved[name])}{marker}")
+        return 0
+
+    if action == "login":
+        print("Paste each credential (leave blank to skip; existing values shown redacted).")
+        print(f"Saved to: {auth.auth_path()}\n")
+        existing = auth.load()
+        saved_now = 0
+        for name in auth.MANAGED_KEYS:
+            current = existing.get(name)
+            hint = f" [{auth.redact(current)}]" if current else ""
+            try:
+                value = getpass.getpass(f"  {name}{hint}: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.")
+                return 1
+            if value:
+                auth.save_key(name, value)
+                saved_now += 1
+        if saved_now:
+            print(f"\nSaved {saved_now} credential(s) to {auth.auth_path()}.")
+        else:
+            print("\nNo changes.")
+        return 0
+
+    if action == "set":
+        name = args.key
+        if not name:
+            print("Usage: profine auth set <KEY> [VALUE]")
+            print(f"Known keys: {', '.join(auth.MANAGED_KEYS)}")
+            return 1
+        if name not in auth.MANAGED_KEYS:
+            print(f"Unknown key '{name}'. Known: {', '.join(auth.MANAGED_KEYS)}")
+            return 1
+        value = args.value
+        if value is None:
+            try:
+                value = getpass.getpass(f"{name}: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.")
+                return 1
+        if not value:
+            print("Empty value; not saved.")
+            return 1
+        auth.save_key(name, value)
+        print(f"Saved {name} to {auth.auth_path()}.")
+        return 0
+
+    if action == "logout":
+        name = args.key
+        if name is None:
+            if auth.clear_all():
+                print(f"Cleared {auth.auth_path()}.")
+            else:
+                print("Nothing to clear.")
+            return 0
+        if name not in auth.MANAGED_KEYS:
+            print(f"Unknown key '{name}'. Known: {', '.join(auth.MANAGED_KEYS)}")
+            return 1
+        if auth.clear_key(name):
+            print(f"Removed {name}.")
+        else:
+            print(f"{name} was not saved.")
+        return 0
+
+    print(f"Unknown auth action: {action}")
+    return 1
+
+
 def cmd_telemetry(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     """Manage anonymous telemetry consent.
 
