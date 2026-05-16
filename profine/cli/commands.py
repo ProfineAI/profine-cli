@@ -824,7 +824,10 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
         base_url=args.base_url,
         seed=args.seed, output=args.output, prefs=args.prefs,
     )
-    rc = cmd_profile(profile_args, output_dir, user_prefs)
+    # Call the body directly so the inner _emit_telemetry_after wrapper
+    # doesn't fire — run-all already wraps the whole pipeline. The outer
+    # wrapper produces the single canonical telemetry batch at the end.
+    rc = _cmd_profile_body(profile_args, output_dir, user_prefs)
     if rc != 0:
         ui.error("Profile failed — aborting pipeline.")
         return rc
@@ -902,7 +905,7 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
         base_url=args.base_url,
         seed=args.seed, output=args.output, prefs=args.prefs,
     )
-    rc = cmd_benchmark(benchmark_args, output_dir, user_prefs)
+    rc = _cmd_benchmark_body(benchmark_args, output_dir, user_prefs)
 
     # Write consolidated SUMMARY.md that aggregates every step's key findings.
     try:
