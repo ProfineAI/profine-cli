@@ -15,7 +15,7 @@ Profile your PyTorch code on real GPUs. Get a transparent rewrite. Ship measured
 
 ## Results
 
-On [Karpathy's minGPT](https://github.com/karpathy/minGPT) (single A100, measured end-to-end by profine):
+On [Karpathy's minGPT](https://github.com/karpathy/minGPT) (single A100, measured end-to-end):
 
 | Metric | Baseline | profine | Δ |
 |---|---|---|---|
