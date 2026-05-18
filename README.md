@@ -76,7 +76,7 @@ ollama serve &
 ollama pull llama3.1:8b
 profine run-all train.py --provider local --model llama3.1:8b
 
-# vLLM (or LM Studio / llama.cpp server / LiteLLM — point --base-url at the server)
+# vLLM, LM Studio, llama.cpp server, or LiteLLM. Point --base-url at the server.
 profine run-all train.py \
   --provider local \
   --model meta-llama/Llama-3.1-8B-Instruct \
@@ -110,17 +110,17 @@ Each stage reads the previous stage's output from `profine_output/` and writes i
 | `--provider` | `openai` | `openai`, `anthropic`, or `local` |
 | `--api-key` | from auth/env | Overrides saved auth + env var |
 | `--model` | provider default | Required for `--provider local` |
-| `--base-url` | — | For `--provider local`; env: `PROFINE_LOCAL_BASE_URL` |
+| `--base-url` | none | For `--provider local`; env: `PROFINE_LOCAL_BASE_URL` |
 | `--seed` | `42` | LLM seed. Temperature is always 0 |
 | `-o/--output` | `profine_output` | Output directory |
-| `--prefs` | — | Markdown of user preferences (biases ranking + edits) |
+| `--prefs` | none | Markdown of user preferences (biases ranking + edits) |
 | `--no-telemetry` | off | Disable anonymous telemetry for this run |
 
 Run `profine env` to see every `PROFINE_*` variable profine reads with its current resolved value.
 
 ## Stages
 
-### `run-all` — full pipeline end-to-end
+### `run-all`
 
 ```bash
 profine run-all examples/minGPT/projects/chargpt/chargpt.py
@@ -128,7 +128,7 @@ profine run-all examples/minGPT/projects/chargpt/chargpt.py
 
 | Flag | Default | Description |
 |---|---|---|
-| `--hardware` | required | Preset name — see [Hardware](#hardware) |
+| `--hardware` | required | Preset name. See [Hardware](#hardware) |
 | `--steps` | `60` | Total measured steps |
 | `--warmup` | `30` | Warmup steps (stripped before measurement) |
 | `--timeout` | `900` | Modal container timeout (s). Auto-extends on timeout |
@@ -138,7 +138,7 @@ profine run-all examples/minGPT/projects/chargpt/chargpt.py
 | `--no-resume` | off | Re-run every stage from scratch |
 | `--yes`, `-y` | off | Skip the cost prompt |
 
-### `read` — extract architecture
+### `read`
 
 ```bash
 profine read train.py
@@ -146,7 +146,7 @@ profine read train.py
 
 Reads model/optimizer/dataloader/precision/distributed-strategy facts via AST + LLM, plus any local modules the script imports. Output: `profine_output/read/architecture_record.json`.
 
-### `profile` — measure on Modal
+### `profile`
 
 ```bash
 profine profile train.py
@@ -154,7 +154,7 @@ profine profile train.py
 
 Instruments the script and runs it on Modal with `torch.profiler`. Collects step times, kernel breakdown, GPU utilization, memory. Same `--hardware` / `--steps` / `--warmup` / `--timeout` / `--warmstart` flags as `run-all`. Output: `profine_output/profile/profile_record.json`.
 
-### `interpret` — find the bottleneck
+### `interpret`
 
 ```bash
 profine interpret --profile-dir profine_output/profile
@@ -162,7 +162,7 @@ profine interpret --profile-dir profine_output/profile
 
 Deterministic analysis + LLM diagnosis. Output: `profine_output/interpret/bottleneck_report.json`.
 
-### `suggest` — rank optimizations
+### `suggest`
 
 ```bash
 profine suggest --interpret-dir profine_output/interpret
@@ -170,7 +170,7 @@ profine suggest --interpret-dir profine_output/interpret
 
 Filters the catalog by applicability, then ranks remaining candidates by ROI. Output: `profine_output/suggest/suggestion_report.json`.
 
-### `edit` — rewrite the source
+### `edit`
 
 ```bash
 profine edit train.py --suggestion-dir profine_output/suggest          # top-ranked only
@@ -178,16 +178,16 @@ profine edit train.py --suggestion-dir profine_output/suggest --top 3  # stack t
 profine edit train.py --suggestion-dir profine_output/suggest --optimization torch_compile
 ```
 
-Multi-file aware: discovers local modules the entry script imports and edits whichever file owns the code being optimized. Patched library files land under `profine_output/edit/files/<rel-path>` — your source tree is never touched. With `--top N`, per-iteration artifacts go in `profine_output/edit/NN_<entry_id>/`; cumulative result at `profine_output/edit/edited_train.py`.
+Multi-file aware: discovers local modules the entry script imports and edits whichever file owns the code being optimized. Patched library files land under `profine_output/edit/files/<rel-path>`, and your source tree is never touched. With `--top N`, per-iteration artifacts go in `profine_output/edit/NN_<entry_id>/`; cumulative result at `profine_output/edit/edited_train.py`.
 
-### `benchmark` — measure baseline vs optimized
+### `benchmark`
 
 ```bash
 profine benchmark train.py                                          # uses <output>/edit/edited_train.py
 profine benchmark train.py --optimized profine_output/edit/edited_train.py
 ```
 
-Runs original and optimized back-to-back on the same hardware. Files under `profine_output/edit/files/` are overlaid on the optimized run. Loss tolerance auto-widens for numerics-perturbing optimizations (BF16/mixed precision: rtol 5%; quantization: rtol 10%) — when widened, the headline verdict surfaces it explicitly. Output: `profine_output/benchmark/`.
+Runs original and optimized back-to-back on the same hardware. Files under `profine_output/edit/files/` are overlaid on the optimized run. Loss tolerance auto-widens for numerics-perturbing optimizations (BF16/mixed precision: rtol 5%; quantization: rtol 10%). When widened, the headline verdict surfaces it explicitly. Output: `profine_output/benchmark/`.
 
 ## Hardware
 
@@ -201,7 +201,7 @@ Hardware presets live in [`profine/config/hardware.yaml`](profine/config/hardwar
 | `1x_a100` | A100 | 80 GB | $2.50 |
 | `1x_h100` | H100 | 80 GB | $3.95 |
 
-Prices from [modal.com/pricing](https://modal.com/pricing). The hardware preset, optimization catalog, kernel patterns, and extractor patterns are all editable YAML — extend without code changes.
+Prices from [modal.com/pricing](https://modal.com/pricing). The hardware preset, optimization catalog, kernel patterns, and extractor patterns are all editable YAML, so you can extend them without code changes.
 
 ## Auxiliary commands
 
