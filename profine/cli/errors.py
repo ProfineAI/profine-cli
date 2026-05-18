@@ -12,6 +12,7 @@ the traceback through (real bugs should still surface during dev).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 
 def format_user_error(exc: BaseException) -> tuple[str, int] | None:
@@ -53,9 +54,11 @@ def format_user_error(exc: BaseException) -> tuple[str, int] | None:
     # keeps the separators the user passed; this also keeps the cross-platform
     # test assertion (which uses forward slashes) stable on Windows.
     if isinstance(exc, FileNotFoundError):
-        if exc.filename:
-            return (f"File not found: {exc.filename}", 2)
-        return (f"File not found: {msg}", 2)
+        target = exc.filename or msg
+        hint = _dataset_prep_hint(target)
+        if hint:
+            return (f"File not found: {target}\n\n{hint}", 2)
+        return (f"File not found: {target}", 2)
 
     # Permission denied — output dir that's not writable
     if isinstance(exc, PermissionError):
@@ -119,3 +122,24 @@ def print_user_error(exc: BaseException) -> int:
 def is_debug_mode() -> bool:
     """When PROFINE_DEBUG=1 we always re-raise so devs see the traceback."""
     return os.environ.get("PROFINE_DEBUG", "").strip() not in ("", "0", "false", "False")
+
+
+_DATASET_BIN_SUFFIXES = (".bin", ".npy", ".arrow", ".parquet")
+
+
+def _dataset_prep_hint(missing_path: str) -> str | None:
+    """Suggest running a sibling `prepare.py` when the missing file looks
+    like a tokenized dataset (nanoGPT/minGPT-style data/<name>/ layout)."""
+    try:
+        path = Path(missing_path)
+    except (TypeError, ValueError):
+        return None
+    if path.suffix not in _DATASET_BIN_SUFFIXES:
+        return None
+    prep = path.parent / "prepare.py"
+    if not prep.exists():
+        return None
+    return (
+        f"This looks like a tokenized dataset that needs to be built first.\n"
+        f"Run:  python {prep}"
+    )

@@ -2,13 +2,51 @@
 
 from __future__ import annotations
 
+import logging
 import os
-from typing import Any
+import time
+from typing import Any, Callable, TypeVar
 
-_DEFAULT_TIMEOUT = 120  # seconds
+_DEFAULT_TIMEOUT = 120
 _DEFAULT_MAX_OUTPUT_TOKENS = 32768
-_DEFAULT_TEMPERATURE = 0.0  # deterministic by default; pass temperature=… to override
+_DEFAULT_TEMPERATURE = 0.0
 _DEFAULT_SEED: int | None = None
+
+_RETRY_ATTEMPTS = int(os.environ.get("PROFINE_LLM_RETRY_ATTEMPTS", "3"))
+_RETRY_BASE_DELAY_SECONDS = float(os.environ.get("PROFINE_LLM_RETRY_BASE_DELAY", "1.5"))
+
+_TRANSIENT_EXC_NAMES = frozenset({
+    "RemoteProtocolError", "ReadError", "ReadTimeout",
+    "ConnectError", "ConnectTimeout", "WriteError", "PoolTimeout",
+    "APIConnectionError", "APITimeoutError",
+    "InternalServerError", "RateLimitError",
+})
+
+_log = logging.getLogger(__name__)
+_T = TypeVar("_T")
+
+
+def _is_transient(exc: BaseException) -> bool:
+    return type(exc).__name__ in _TRANSIENT_EXC_NAMES
+
+
+def _with_retry(fn: Callable[[], _T], *, label: str) -> _T:
+    last_exc: BaseException | None = None
+    for attempt in range(1, _RETRY_ATTEMPTS + 1):
+        try:
+            return fn()
+        except BaseException as exc:
+            if not _is_transient(exc) or attempt == _RETRY_ATTEMPTS:
+                raise
+            delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            _log.warning(
+                "%s: transient %s on attempt %d/%d (%s); retrying in %.1fs",
+                label, type(exc).__name__, attempt, _RETRY_ATTEMPTS, exc, delay,
+            )
+            last_exc = exc
+            time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
 
 
 class LlmBackend:
@@ -39,17 +77,19 @@ class AnthropicBackend(LlmBackend):
         self.seed = seed
 
     def call(self, system: str, user: str) -> str:
-        chunks: list[str] = []
-        with self.client.messages.stream(
-            model=self.model,
-            max_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
-            temperature=self.temperature,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        ) as stream:
-            for text in stream.text_stream:
-                chunks.append(text)
-        return "".join(chunks)
+        def _once() -> str:
+            chunks: list[str] = []
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=_DEFAULT_MAX_OUTPUT_TOKENS,
+                temperature=self.temperature,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ) as stream:
+                for text in stream.text_stream:
+                    chunks.append(text)
+            return "".join(chunks)
+        return _with_retry(_once, label="anthropic.call")
 
 
 class OpenAIBackend(LlmBackend):
@@ -88,13 +128,15 @@ class OpenAIBackend(LlmBackend):
             # OpenAI's API treats `seed` as best-effort: same (model, seed,
             # prompt) → same response when system_fingerprint is stable.
             kwargs["seed"] = self.seed
-        stream = self.client.chat.completions.create(**kwargs)
-        chunks: list[str] = []
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                chunks.append(delta)
-        return "".join(chunks)
+        def _once() -> str:
+            stream = self.client.chat.completions.create(**kwargs)
+            chunks: list[str] = []
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    chunks.append(delta)
+            return "".join(chunks)
+        return _with_retry(_once, label="openai.call")
 
 
 class LocalBackend(OpenAIBackend):

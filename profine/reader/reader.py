@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,11 @@ from typing import Any
 
 from profine.reader.extractor import CodeFacts, extract
 from profine.reader.llm_analyzer import analyze
+
+# Caps on sibling-module source fed to the reader LLM so the prompt
+# stays inside any gpt-4o-class context window.
+_LOCAL_MODULES_MAX_FILES = int(os.environ.get("PROFINE_READER_MAX_FILES", "12"))
+_LOCAL_MODULES_MAX_CHARS = int(os.environ.get("PROFINE_READER_MAX_CHARS", "50000"))
 
 
 @dataclass(slots=True)
@@ -107,9 +113,23 @@ class CodeReader:
 
         facts = extract(source, file_name)
 
+        # Sibling modules often hold the defaults the entry script relies
+        # on. Feeding them in stops the LLM from guessing those fields.
+        local_modules: dict[str, str] = {}
+        try:
+            from profine.modal.discovery import discover_local_modules
+            local_modules = discover_local_modules(
+                path,
+                max_files=_LOCAL_MODULES_MAX_FILES,
+                max_total_chars=_LOCAL_MODULES_MAX_CHARS,
+            )
+        except Exception:
+            local_modules = {}
+
         record, brief = analyze(
             source, facts, provider=self.provider,
-            debug_dir=debug_dir, **self._llm_kwargs,
+            debug_dir=debug_dir, local_modules=local_modules,
+            **self._llm_kwargs,
         )
 
         record["script_path"] = str(path)

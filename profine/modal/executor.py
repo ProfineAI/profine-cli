@@ -7,11 +7,15 @@ the raw results payload.
 from __future__ import annotations
 
 import json
+import os
+import re
+import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, TextIO
 
 from profine.modal.app_registry import (
     build_deployment_signature,
@@ -33,6 +37,68 @@ from profine.config.yaml_loader import get_transient_error_patterns
 
 _TRANSIENT_ERROR_PATTERNS = get_transient_error_patterns()
 _MAX_TRANSIENT_RETRIES = 3
+
+
+# Inductor autotune logs that look like crashes but are discarded
+# kernel configs. Hidden by default; PROFINE_VERBOSE=1 restores them.
+_BENIGN_AUTOTUNE_PATTERNS = [
+    re.compile(r"select_algorithm\.py.*Runtime error during autotuning"),
+    re.compile(r"select_algorithm\.py.*No valid triton configs"),
+    re.compile(r"select_algorithm\.py.*Ignoring this choice"),
+    re.compile(r"select_algorithm\.py.*Reducing block sizes"),
+    re.compile(r"OutOfMemoryError: out of resource: triton_mm"),
+]
+
+
+class _FilteringStream:
+    """File-like wrapper that drops whole lines matching any provided regex."""
+    def __init__(self, inner: TextIO, patterns: list[re.Pattern[str]]) -> None:
+        self._inner = inner
+        self._patterns = patterns
+        self._buf = ""
+
+    def _matches(self, line: str) -> bool:
+        return any(p.search(line) for p in self._patterns)
+
+    def write(self, data: str) -> int:
+        if not data:
+            return 0
+        self._buf += data
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            if not self._matches(line):
+                self._inner.write(line + "\n")
+        return len(data)
+
+    def flush(self) -> None:
+        if self._buf and not self._matches(self._buf):
+            self._inner.write(self._buf)
+        self._buf = ""
+        self._inner.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+@contextmanager
+def _filter_remote_logs() -> Iterator[None]:
+    # Modal pipes container logs through a Rich console on stdout (even
+    # stderr-flagged lines), so both streams need wrapping.
+    if os.environ.get("PROFINE_VERBOSE") == "1":
+        yield
+        return
+    orig_err, orig_out = sys.stderr, sys.stdout
+    sys.stderr = _FilteringStream(orig_err, _BENIGN_AUTOTUNE_PATTERNS)
+    sys.stdout = _FilteringStream(orig_out, _BENIGN_AUTOTUNE_PATTERNS)
+    try:
+        yield
+    finally:
+        for s in (sys.stderr, sys.stdout):
+            try:
+                s.flush()
+            except Exception:
+                pass
+        sys.stderr, sys.stdout = orig_err, orig_out
 
 
 @dataclass(slots=True)
@@ -74,6 +140,14 @@ class ModalExecutor:
         self._config = modal_config or ModalRuntimeConfig()
         self._hf_token = hf_token
         self._image_builder = ModalImageBuilder(self._config)
+
+    @property
+    def timeout_seconds(self) -> int:
+        return self._config.timeout_seconds
+
+    @timeout_seconds.setter
+    def timeout_seconds(self, value: int) -> None:
+        self._config.timeout_seconds = int(value)
 
     def execute(
         self,
@@ -184,7 +258,7 @@ class ModalExecutor:
 
         start = time.monotonic()
         try:
-            with modal.enable_output():
+            with _filter_remote_logs(), modal.enable_output():
                 with app.run():
                     raw_output = remote_fn.remote(instrumented_source, rel_path, total_steps, self._config.timeout_seconds, script_args, overlay_files)
             return _parse_output(raw_output, time.monotonic() - start)
@@ -271,9 +345,19 @@ def _remote_execute(
     import sys
     import runpy
 
-    # Set authoritative step limit so the StepController uses this
-    # regardless of what the LLM wrote in install_hooks()
+    # Python defaults to block-buffered stdio when stdout isn't a tty, which
+    # turned remote prints into 4-8KB chunks. Line-buffered = real-time logs.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except (AttributeError, OSError):
+        pass
+
+    # Authoritative limits so StepController ignores anything stale the
+    # LLM wrote into the instrumented script. The wall-clock cap sits below
+    # Modal's container timeout so the script can flush partial data first.
     os.environ["PROFINE_TOTAL_STEPS"] = str(total_steps)
+    os.environ["PROFINE_WALL_CLOCK_LIMIT"] = str(max(60, int(timeout * 0.8)))
 
     # Force acc_events=True on the torch profiler so CUDA times survive
     # the schedule cycle — the LLM healer tends to drop this flag.

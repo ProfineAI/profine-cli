@@ -89,7 +89,11 @@ Return ONLY valid JSON (no markdown fences) with exactly two keys:
 """
 
 
-def _build_user_message(source: str, facts: CodeFacts) -> str:
+def _build_user_message(
+    source: str,
+    facts: CodeFacts,
+    local_modules: dict[str, str] | None = None,
+) -> str:
     facts_dict = asdict(facts)
     for key in ("calls", "assignments"):
         items = facts_dict.get(key, [])
@@ -105,6 +109,15 @@ def _build_user_message(source: str, facts: CodeFacts) -> str:
         "\n## Extracted Facts (from static analysis)\n",
         json.dumps(facts_dict, indent=2, default=str),
     ]
+    if local_modules:
+        parts.append(
+            "\n## Related Local Modules (imported by the script)\n"
+            "Treat these as authoritative — defaults defined here are NOT "
+            "guesses. Cite them in evidence using their relative path.\n"
+        )
+        for rel_path, text in local_modules.items():
+            parts.append(f"\n### `{rel_path}`\n")
+            parts.append(_numbered_source(text))
     return "\n".join(parts)
 
 
@@ -121,15 +134,20 @@ def analyze(
     provider: str = "openai",
     *,
     debug_dir: Path | str | None = None,
+    local_modules: dict[str, str] | None = None,
     **llm_kwargs: Any,
 ) -> tuple[dict[str, Any], str]:
     """Run LLM analysis on extracted facts.
+
+    Args:
+        local_modules: Optional map of `relative_path -> source` for files
+            the entry script transitively imports.
 
     Returns:
         (architecture_record_dict, markdown_brief)
     """
     backend = create_backend(provider, **llm_kwargs)
-    user_msg = _build_user_message(source, facts)
+    user_msg = _build_user_message(source, facts, local_modules=local_modules)
     parsed = call_and_parse(
         backend, SYSTEM_PROMPT, user_msg,
         debug_dir=debug_dir, debug_label="reader_response",

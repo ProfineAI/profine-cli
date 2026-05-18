@@ -251,16 +251,29 @@ class CodeEditor:
         architecture_record: dict[str, Any] | None = None,
         user_preferences: str | None = None,
     ) -> list[EditResult]:
-        """Apply multiple optimizations sequentially.
+        """Apply candidates sequentially, stacking each edit on the previous.
 
-        Each optimization is applied to the output of the previous one.
-        Returns a list of EditResults, one per candidate.
+        One bad candidate (malformed LLM JSON, syntax-heal exhausted, …) is
+        recorded as a non-applied EditResult and the loop continues — never
+        let one failure throw away earlier successful edits.
         """
         results: list[EditResult] = []
         current_source = source
 
         for candidate in candidates:
-            result = self.edit(current_source, candidate, architecture_record, user_preferences)
+            try:
+                result = self.edit(current_source, candidate, architecture_record, user_preferences)
+            except Exception as exc:
+                result = EditResult(
+                    original_source=current_source,
+                    edited_source=current_source,
+                    applied=False,
+                    optimization_id=candidate.entry_id,
+                    not_applicable_reason=(
+                        f"editor raised {type(exc).__name__}: {exc}. "
+                        "Continuing with the remaining candidates."
+                    ),
+                )
             results.append(result)
             if result.applied:
                 current_source = result.edited_source

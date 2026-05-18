@@ -72,15 +72,42 @@ def _load_json(p: Path) -> Any | None:
 
 def _headline(comparison: dict) -> str:
     speedup = comparison.get("speedup_pct", 0.0)
-    correctness_passed = (comparison.get("correctness") or {}).get("passed", True)
+    c = comparison.get("correctness") or {}
+    correctness_passed = c.get("passed", True)
+    if c.get("tolerance_widened"):
+        cat = c.get("tolerance_widened_for") or "this optimization"
+        correctness_note = (
+            f"correctness preserved (at relaxed tolerance for {cat}: "
+            f"rtol={c.get('rtol', 0):g}, atol={c.get('atol', 0):g})"
+        )
+    else:
+        correctness_note = "correctness preserved"
+    band = _speedup_band(comparison)
     if speedup >= 3.0 and correctness_passed:
         mult = 100.0 / (100.0 - speedup) if speedup < 100 else float("inf")
-        return f"## ✅ {speedup:.1f}% faster ({mult:.2f}× speedup), correctness preserved."
+        return f"## ✅ {speedup:.1f}% faster ({mult:.2f}× speedup{band}), {correctness_note}."
     if speedup >= 3.0 and not correctness_passed:
         return f"## ⚠️ {speedup:.1f}% faster, but loss curves diverge — review before shipping."
     if speedup <= -2.0:
         return f"## ❌ {abs(speedup):.1f}% regression — do not ship."
     return f"## ➖ No meaningful change ({speedup:+.1f}%)."
+
+
+def _speedup_band(comparison: dict) -> str:
+    """Inline confidence band like '; 3.90×–4.92× p25–p75' when noisy."""
+    headline = comparison.get("speedup_pct", 0.0)
+    lo = comparison.get("speedup_pct_p25", headline)
+    hi = comparison.get("speedup_pct_p75", headline)
+    noisy = comparison.get("noisy", False)
+    if not noisy and (hi - lo) <= 4.0:
+        return ""
+    if lo <= 0 and headline > 0:
+        lo_str = "no change"
+    else:
+        lo_mult = 100.0 / (100.0 - lo) if lo < 100 else float("inf")
+        lo_str = f"{lo_mult:.2f}×"
+    hi_mult = 100.0 / (100.0 - hi) if hi < 100 else float("inf")
+    return f"; {lo_str}–{hi_mult:.2f}× across step-time p25–p75"
 
 
 def _architecture_section(arch: dict) -> str:
