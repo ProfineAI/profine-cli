@@ -239,6 +239,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdout()
+    # Cached, opt-out-aware, never-blocking version check. See the module
+    # for the constraints — this call is always safe and silent on failure.
+    from profine.cli._update_check import maybe_print_update_nudge
+    maybe_print_update_nudge()
     try:
         # When profine is installed as a console script, find_dotenv()'s default
         # (usecwd=False) walks up from the entry-script's directory — e.g.

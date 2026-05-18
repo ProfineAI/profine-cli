@@ -2,6 +2,43 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] — 2026-05-18
+
+### Breaking
+
+- **`--hardware` is now required** on `profile`, `benchmark`, and `run-all`. The previous `auto` default silently chose a "smallest preset that fits" using a heuristic that mis-sized GPUs for unknown architectures; making it explicit prevents that footgun. Pick one of: `1x_t4`, `1x_l4`, `1x_a10g`, `1x_a100`, `1x_h100`. The `auto_select_hardware()` helper and the param-bucket preset table have been removed.
+
+### Added
+
+- **`profine telemetry doctor`.** Synchronous probe of the telemetry endpoint that reports consent state, endpoint URL, HTTP status code, and per-attempt latency. Use this to verify the round-trip works (or to warm a sleeping Render dyno before a real run).
+- **Update-check nudge on CLI startup.** Profine now checks PyPI for the latest release once every 24 hours (cached in `~/.profine/`) and prints a one-line nudge if your installed version is behind. Silenced via `PROFINE_NO_UPDATE_CHECK=1`.
+- **Low-sample warning.** Benchmark reports surface a warning when fewer than 10 step samples survive warmup stripping — so users notice when the median is built on thin data.
+- **`PROFINE_TELEMETRY_RETRY_BACKOFF` env var.** Test-and-CI knob for the telemetry retry backoff. Defaults to 2.0s in production.
+
+### Changed
+
+- **Telemetry HTTP transport: timeout 5s → 15s, one retry with 2s backoff.** The anon endpoint is hosted on Render's free/starter tier, where the first request after idle takes ~9s to wake the dyno. Under the old 5s timeout that first POST was always silently dropped. Final-attempt failures now log at WARNING (was DEBUG) so silent data loss is no longer invisible.
+- **Verdict string for fast-but-wrong runs** now reads `FAIL (correctness; speedup measured but loss diverged)` instead of leading with `PASS`. A run that ships incorrect numerics is not a pass, regardless of its step time.
+- **README results section** replaced with a median-of-3 multi-GPU table (A10G + A100). Honest framing of variance + range rather than a single fast-run headline.
+
+### Fixed
+
+- **`_projected_savings` divide-by-zero** when speedup approached 100% (zero-sample candidate). Clamped `fraction_saved` to 0.99.
+- **`_maybe_adapt` step-time estimate poisoned by torch.compile cold-start.** The adaptive step controller previously used `elapsed / steps_completed`, which is dominated by a 2.8s first-step compile when the steady state is ~17ms. Now uses median of recorded step times when available.
+- **`_strip_warmup` could strip more samples than existed**, producing a zero-sample comparison with a bogus "100% faster / ∞× speedup" result. Capped to keep at least 3 samples on both `benchmarker.benchmarker` and `profiler.orchestrator`.
+- **`--edit-dir` outside `--output`** now correctly resolves the suggest report via `edit_dir.parent / "suggest"`. Without this, the BF16-aware tolerance widening never fired on standalone `benchmark` invocations, and every BF16-stack benchmark spuriously failed correctness.
+- **`_resolve_hardware`** in `telemetry/emit.py` now prefers the explicit `hardware_name` argument over `profile_record.hardware_name`. Batch / replay callers re-emitting from on-disk artifacts for a *different* GPU than the one that produced the profile record were having their rows mis-tagged.
+
+### Internal
+
+- 9 new regression tests pinning each surface bug above; 584 tests total.
+- Six empty package directories deleted (`heuristics/`, `modifiers/`, `output/`, `preflight/`, `search/`, `resources/`) — vestigial scaffolding from a past refactor.
+- LLM backends (`profine/llm/backend.py`) gained exponential-backoff retry for transient API errors (timeouts, 5xx, rate limits), bounded at 3 attempts and env-tunable.
+- Modal executor (`profine/modal/executor.py`) filters benign Inductor autotune log spam (`No valid triton configs`, `OutOfMemoryError: out of resource: triton_mm`) so successful autotune sweeps don't read as crashes; also wires `PROFINE_WALL_CLOCK_LIMIT` so the script's `StepController` stays below Modal's container timeout.
+- Stacked edits in `profine/editor/editor.py` are wrapped in try/except so one bad LLM candidate surfaces as a non-applied `EditResult` instead of blowing away previously-successful edits.
+- Reader feeds sibling modules to the analyzer LLM, so defaults defined in imported files (e.g. `mingpt/model.py`) no longer come back as "guessed" zeros.
+- File-not-found errors now hint that a sibling `prepare.py` needs to run when the missing path looks like a tokenized dataset (nanoGPT/minGPT layout).
+
 ## [0.4.0] — 2026-05-16
 
 ### Added
