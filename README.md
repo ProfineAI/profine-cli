@@ -25,10 +25,10 @@ profine prints a one-line cost summary, runs the full pipeline on Modal, and pro
 
 On [Karpathy's minGPT](https://github.com/karpathy/minGPT) `chargpt` config, **median of 3 independent runs per GPU**, full optimization stack applied (BF16 Mixed Precision + TF32 matmul + torch.compile max-autotune + SDPA + Fused AdamW):
 
-| GPU | Baseline step | Optimized step | Speedup | Peak mem Δ | Correctness |
-|---|---|---|---|---|---|
-| **A10G** (24 GB) | 43.8 ms | 16.5 ms | **2.75× faster** (63.7%) | −71.1% | ✓ all 3 reps |
-| **A100** (80 GB) | 25.2 ms | 7.5 ms | **3.48× faster** (71.3%) | −68.7% | ✓ all 3 reps |
+| GPU | Baseline step | Optimized step | Speedup | Peak mem Δ |
+|---|---|---|---|---|
+| **A10G** (24 GB) | 43.8 ms | 16.5 ms | **2.75× faster** (63.7%) | −71.1% |
+| **A100** (80 GB) | 25.2 ms | 7.5 ms | **3.48× faster** (71.3%) | −68.7% |
 
 Per-run speedups (3 reps each): A10G 2.42× / 2.75× / 4.73×; A100 2.14× / 3.48× / 3.51×.
 Correctness is checked by replaying baseline and optimized loss curves step-for-step on the same seed; both stay inside the BF16-widened tolerance (`rtol=0.05, atol=0.01`, the documented bf16-vs-fp32 drift budget) on every rep. Median loss-curve max diff: 0.013 (A10G), 0.098 (A100).
@@ -45,7 +45,7 @@ Full artifacts in [`examples/minGPT/profine_output/`](examples/minGPT/profine_ou
 
 Requires:
 - A [Modal](https://modal.com) account (the GPU backend)
-- An LLM: OpenAI, Anthropic, **or any OpenAI-compatible local server** (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
+- An LLM: OpenAI, Anthropic, or any OpenAI-compatible local server (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM)
 
 The fastest path is `profine auth login` which is an interactive prompt that saves keys to `~/.profine/auth.json` (chmod 0600):
 
