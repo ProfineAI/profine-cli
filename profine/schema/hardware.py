@@ -85,3 +85,5 @@ def get_hardware(name: str) -> HardwareConfig:
         k: v for k, v in raw.items()
         if k in HardwareConfig.__dataclass_fields__
     })
+
+

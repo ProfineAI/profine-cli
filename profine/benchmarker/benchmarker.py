@@ -189,6 +189,13 @@ class Benchmarker:
 
         _strip_warmup(baseline_payload, warmup_steps)
         _strip_warmup(candidate_payload, warmup_steps)
+        for label, payload in (("baseline", baseline_payload), ("optimized", candidate_payload)):
+            n = len(payload.get("step_times_ms", []))
+            if 0 < n < 10:
+                warnings.append(
+                    f"{label} has only {n} step samples after warmup stripping — "
+                    f"median may be noisy. Increase --steps or reduce --warmup."
+                )
 
         # Pick correctness tolerance based on the optimization class.
         # Mixed-precision math legitimately perturbs losses by ~1-3%
@@ -207,14 +214,18 @@ class Benchmarker:
             r, a = _resolve_tolerance(cat, rtol, atol)
             if (r, a) > (eff_rtol, eff_atol):
                 eff_rtol, eff_atol, chosen_cat = r, a, cat
-        if (eff_rtol, eff_atol) != (rtol, atol):
-            label = chosen_cat or "stacked"
+        tolerance_widened = (eff_rtol, eff_atol) != (rtol, atol)
+        widened_for = chosen_cat or "stacked" if tolerance_widened else ""
+        if tolerance_widened:
             warnings.append(
-                f"Loss tolerance widened for category '{label}': "
+                f"Loss tolerance widened for category '{widened_for}': "
                 f"rtol {rtol} -> {eff_rtol}, atol {atol} -> {eff_atol}"
             )
 
         comparison = compare_payloads(baseline_payload, candidate_payload, rtol=eff_rtol, atol=eff_atol)
+        if tolerance_widened:
+            comparison.correctness.tolerance_widened = True
+            comparison.correctness.tolerance_widened_for = widened_for
 
         markdown = generate_report(
             comparison,
@@ -364,6 +375,9 @@ def _strip_warmup(payload: dict[str, Any], warmup_steps: int) -> None:
         return
 
     effective_warmup = detect_stabilization_point(step_times, min_warmup=warmup_steps)
+    # Never strip the whole array: if adaptation shortened the run, keep at
+    # least the last few samples so downstream comparison isn't zero-sample.
+    effective_warmup = min(effective_warmup, max(0, len(step_times) - 3))
     payload["step_times_ms"] = step_times[effective_warmup:]
 
 

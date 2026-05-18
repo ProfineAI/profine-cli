@@ -37,6 +37,13 @@ from profine.config.settings import DEFAULTS
 
 _LLM_COMMANDS = {"read", "profile", "interpret", "suggest", "edit", "benchmark", "run-all"}
 
+# Single source of truth for the CLI's tolerance defaults.
+_DEFAULT_RTOL = 1e-2
+_DEFAULT_ATOL = 1e-4
+
+# Mirrors hardware.yaml; update both when a preset is added.
+_HARDWARE_PRESETS_HINT = "1x_t4, 1x_l4, 1x_a10g, 1x_a100, 1x_h100"
+
 
 def _ensure_utf8_stdout() -> None:
     """Reconfigure stdout/stderr to UTF-8 so non-ASCII help text (arrows,
@@ -54,33 +61,35 @@ def _ensure_utf8_stdout() -> None:
 def _add_shared(p: argparse.ArgumentParser, *, suppress: bool) -> None:
     """Attach the shared flags to `p`.
 
-    `suppress=True` makes the argparse defaults SUPPRESS, so the action does
-    not write to the namespace when the user didn't pass the flag. We use
-    that for subparsers so that a flag set at the top level (e.g.
-    `profine --provider local read x`) isn't clobbered when the subparser
-    parses into its fresh namespace and copies attrs back. The top-level
-    parser keeps real defaults so the value is always present after parse.
+    `suppress=True` swaps the argparse defaults for SUPPRESS so subparsers
+    don't clobber values set at the top level (e.g. `profine --provider
+    local read x`). The top-level parser keeps real defaults.
     """
     NONE = argparse.SUPPRESS if suppress else None
     OUT = argparse.SUPPRESS if suppress else "profine_output"
     PROV = argparse.SUPPRESS if suppress else "openai"
+    SEED = argparse.SUPPRESS if suppress else 42
     p.add_argument("--provider", default=PROV,
                    choices=["openai", "anthropic", "local"],
                    help="LLM provider: 'openai', 'anthropic', or 'local' (OpenAI-compatible local server)")
-    p.add_argument("--api-key", default=NONE, help="API key override")
-    p.add_argument("--model", default=NONE, help="Model name override (required for --provider local)")
+    p.add_argument("--api-key", default=NONE,
+                   help="Override saved auth + env var (OPENAI_API_KEY / ANTHROPIC_API_KEY)")
+    p.add_argument("--model", default=NONE,
+                   help="Model name override (required for --provider local)")
     p.add_argument("--base-url", default=NONE,
                    help="OpenAI-compatible endpoint URL (for --provider local; defaults to "
                         "http://localhost:11434/v1 for Ollama). Env: PROFINE_LOCAL_BASE_URL")
-    p.add_argument("--seed", type=int, default=NONE,
-                   help="Seed for the LLM provider (best-effort; OpenAI honors it, Anthropic "
-                        "ignores it and relies on temperature=0). Use to make optimization "
-                        "rankings reproducible across runs.")
-    p.add_argument("--output", "-o", default=OUT, help="Output directory")
-    p.add_argument("--prefs", default=NONE, help="Path to user preferences markdown")
-    # Anonymous telemetry opt-out. The first interactive run will prompt
-    # for consent if neither this flag nor PROFINE_NO_TELEMETRY is set;
-    # paying customers' opt-out is server-side, this flag is the OSS lever.
+    p.add_argument("--seed", type=int, default=SEED,
+                   help="LLM seed (default: 42; best-effort — OpenAI honors it, Anthropic "
+                        "ignores it). Vary across runs for diverse suggestions; temperature is "
+                        "always 0.")
+    p.add_argument("--output", "-o", default=OUT,
+                   help="Output directory (default: profine_output/)")
+    p.add_argument("--prefs", default=NONE,
+                   help="Path to a markdown file of user preferences (constraints + priorities) "
+                        "that bias optimization ranking and editor choices")
+    # First interactive run prompts for consent unless this flag or
+    # PROFINE_NO_TELEMETRY is set.
     if suppress:
         p.add_argument("--no-telemetry", action="store_true", default=argparse.SUPPRESS,
                        help="Disable anonymous telemetry for this invocation")
@@ -89,15 +98,54 @@ def _add_shared(p: argparse.ArgumentParser, *, suppress: bool) -> None:
                        help="Disable anonymous telemetry for this invocation")
 
 
+def _add_hw_run_flags(p: argparse.ArgumentParser, *, include_warmstart: bool = True) -> None:
+    """Modal-runtime flags shared by `profile`, `benchmark`, and `run-all`."""
+    p.add_argument("--hardware", required=True,
+                   help=f"Hardware preset (required; available: "
+                        f"{_HARDWARE_PRESETS_HINT})")
+    p.add_argument("--steps", type=int, default=DEFAULTS.default_steps,
+                   help=f"Total measured steps (default: {DEFAULTS.default_steps})")
+    p.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps,
+                   help=f"Warmup steps stripped before measurement (default: {DEFAULTS.default_warmup_steps})")
+    p.add_argument("--timeout", type=int, default=DEFAULTS.default_modal_timeout,
+                   help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
+    if include_warmstart:
+        p.add_argument("--warmstart", action="store_true",
+                       help="Reuse deployed Modal app between runs (faster after the first run)")
+
+
+def _add_correctness_flags(p: argparse.ArgumentParser) -> None:
+    """Loss-tolerance flags shared by `benchmark` and `run-all`."""
+    p.add_argument("--rtol", type=float, default=_DEFAULT_RTOL,
+                   help=f"Loss relative tolerance for correctness check (default: {_DEFAULT_RTOL:g}; "
+                        f"auto-widened for BF16/FP16 optimizations)")
+    p.add_argument("--atol", type=float, default=_DEFAULT_ATOL,
+                   help=f"Loss absolute tolerance for correctness check (default: {_DEFAULT_ATOL:g}; "
+                        f"auto-widened for BF16/FP16 optimizations)")
+
+
+def _add_top_flag(p: argparse.ArgumentParser, *, run_all: bool) -> None:
+    """`--top N` — same semantics in `edit` and `run-all`, slightly different default."""
+    default_note = "(default: all ranked candidates)" if run_all else "(default: top-ranked only)"
+    p.add_argument("--top", type=int, default=None,
+                   help=f"Apply the top N ranked optimizations sequentially, each stacked on the "
+                        f"previous edit {default_note}. Per-step artifacts land in "
+                        f"<output>/edit/NN_<entry_id>/; cumulative output in <output>/edit/.")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    # Shared flags work before OR after the subcommand. Subparsers use
-    # SUPPRESS defaults so they don't clobber values set at the top level.
+    # Shared flags work before OR after the subcommand. Subparsers that
+    # need them inherit via parents=[]; non-LLM subcommands (telemetry,
+    # env, auth) do NOT inherit them — those flags are no-ops there.
     shared_suppress = argparse.ArgumentParser(add_help=False)
     _add_shared(shared_suppress, suppress=True)
 
     parser = argparse.ArgumentParser(
         prog="profine",
         description="Agentic ML Training Optimizer",
+        epilog="Environment variables that profine reads (and their current values) "
+               "are listed by `profine env`. Saved API keys live in ~/.profine/auth.json "
+               "— manage them with `profine auth`.",
     )
     _add_shared(parser, suppress=False)
 
@@ -109,12 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_profile = sub.add_parser("profile", help="Profile a training script on Modal", parents=[shared], conflict_handler="resolve")
     p_profile.add_argument("script", help="Path to the training script")
-    p_profile.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
-    p_profile.add_argument("--steps", type=int, default=DEFAULTS.default_steps, help="Total steps")
-    p_profile.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps, help="Warmup steps")
-    p_profile.add_argument("--timeout", type=int, default=DEFAULTS.default_modal_timeout,
-                           help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
-    p_profile.add_argument("--warmstart", action="store_true", help="Reuse deployed Modal app between runs")
+    _add_hw_run_flags(p_profile)
 
     p_interpret = sub.add_parser("interpret", help="Interpret a profile into bottlenecks", parents=[shared], conflict_handler="resolve")
     p_interpret.add_argument("--profile-dir", required=True, help="Directory with profile output")
@@ -128,23 +171,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_edit.add_argument("script", nargs="?", default=None, help="Path to the training script (auto-detected from prior steps if omitted)")
     p_edit.add_argument("--suggestion-dir", required=True, help="Directory with suggestion output")
     p_edit.add_argument("--optimization", default=None, help="Optimization ID to apply (default: top-ranked)")
-    p_edit.add_argument("--top", type=int, default=None,
-                        help="Apply the top N ranked optimizations sequentially, "
-                             "each stacked on the previous edit. Cumulative output "
-                             "lands at <output>/edit/ for `profine benchmark`; "
-                             "per-step artifacts go in <output>/edit/NN_<entry_id>/.")
+    _add_top_flag(p_edit, run_all=False)
 
     p_bench = sub.add_parser("benchmark", help="Benchmark original vs. optimized", parents=[shared], conflict_handler="resolve")
     p_bench.add_argument("script", nargs="?", default=None, help="Path to the original training script (auto-detected from prior steps if omitted)")
     p_bench.add_argument("--optimized", default=None, help="Path to the optimized script (default: <output>/edit/edited_train.py)")
-    p_bench.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
-    p_bench.add_argument("--steps", type=int, default=DEFAULTS.default_steps, help="Total steps")
-    p_bench.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps, help="Warmup steps")
-    p_bench.add_argument("--rtol", type=float, default=1e-2, help="Loss rtol")
-    p_bench.add_argument("--atol", type=float, default=1e-4, help="Loss atol")
-    p_bench.add_argument("--timeout", type=int, default=DEFAULTS.default_modal_timeout,
-                         help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
-    p_bench.add_argument("--warmstart", action="store_true", help="Reuse deployed Modal app between runs")
+    _add_hw_run_flags(p_bench)
+    _add_correctness_flags(p_bench)
     p_bench.add_argument("--edit-dir", default=None,
                           help="Directory of editor output (default: <output>/edit). "
                                "Extra files under <edit-dir>/files/ are overlaid onto the "
@@ -154,44 +187,37 @@ def build_parser() -> argparse.ArgumentParser:
     p_all = sub.add_parser("run-all", help="Run the full pipeline: read → profile → interpret → suggest → edit → benchmark",
                            parents=[shared], conflict_handler="resolve")
     p_all.add_argument("script", help="Path to the training script")
-    p_all.add_argument("--hardware", default=DEFAULTS.default_hardware, help="Hardware preset")
-    p_all.add_argument("--steps", type=int, default=DEFAULTS.default_steps, help="Total steps")
-    p_all.add_argument("--warmup", type=int, default=DEFAULTS.default_warmup_steps, help="Warmup steps")
-    p_all.add_argument("--timeout", type=int, default=DEFAULTS.default_modal_timeout,
-                       help=f"Modal container timeout in seconds (default: {DEFAULTS.default_modal_timeout})")
-    p_all.add_argument("--warmstart", action="store_true", help="Reuse deployed Modal app between runs")
-    p_all.add_argument("--top", type=int, default=None,
-                       help="Apply top N optimizations (default: all ranked candidates)")
-    p_all.add_argument("--rtol", type=float, default=1e-2, help="Loss relative tolerance for correctness")
-    p_all.add_argument("--atol", type=float, default=1e-4, help="Loss absolute tolerance for correctness")
+    _add_hw_run_flags(p_all)
+    _add_top_flag(p_all, run_all=True)
+    _add_correctness_flags(p_all)
+    p_all.add_argument("--no-resume", action="store_true",
+                       help="Re-run every stage from scratch even if its output already exists "
+                            "in --output (default: resume by skipping stages whose artifacts are present)")
+    p_all.add_argument("--yes", "-y", action="store_true",
+                       help="Auto-confirm the cost prompt that appears only when the estimated "
+                            "cost is high (see PROFINE_COST_PROMPT_THRESHOLD; default $5). "
+                            "Cheap runs always proceed without asking.")
 
-    # telemetry — view/toggle anonymous data collection
+    # telemetry / env / auth: no LLM, no Modal — don't inherit shared flags.
     p_telem = sub.add_parser(
         "telemetry",
         help="Manage anonymous telemetry consent",
-        parents=[shared],
-        conflict_handler="resolve",
     )
     p_telem.add_argument(
         "action",
-        choices=["status", "enable", "disable"],
-        help="status: show current state; enable/disable: change OSS consent",
+        choices=["status", "enable", "disable", "doctor"],
+        help="status: show current state; enable/disable: change OSS consent; "
+             "doctor: probe the backend synchronously and report the result",
     )
 
-    # env — print all PROFINE_* env vars with their resolved values
     sub.add_parser(
         "env",
         help="Show every PROFINE_* env var profine reads (with current values)",
-        parents=[shared],
-        conflict_handler="resolve",
     )
 
-    # auth — manage saved API keys in ~/.profine/auth.json
     p_auth = sub.add_parser(
         "auth",
         help="Save API keys to ~/.profine/auth.json so you don't have to export env vars",
-        parents=[shared],
-        conflict_handler="resolve",
     )
     p_auth.add_argument(
         "action",

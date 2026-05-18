@@ -46,7 +46,9 @@ def _emit_telemetry_after(
     from profine.telemetry.builder import build_recorder
 
     recorder = build_recorder(args, client_version=_resolve_client_version())
-    if recorder.enabled:
+    # run-all does its own read stage; calling the pre-step there would
+    # double-bill the LLM and make the "skipped read on resume" line a lie.
+    if recorder.enabled and getattr(args, "command", None) != "run-all":
         _ensure_read_output_for_telemetry(args, output_dir)
     try:
         return pipeline_callable()
@@ -263,7 +265,95 @@ def cmd_telemetry(args: Namespace, output_dir: Path, user_prefs: str | None) -> 
         print(f"Stored at: {consent_path()}")
         return 0
 
+    if action == "doctor":
+        return _cmd_telemetry_doctor()
+
     print(f"Unknown telemetry action: {action}")
+    return 1
+
+
+def _cmd_telemetry_doctor() -> int:
+    """Synchronously probe the telemetry endpoint and print a verdict.
+
+    Reports consent state, endpoint URL, and the result of one POST
+    attempt with a minimal probe payload. Bypasses the background-thread
+    machinery so failures are visible instead of swallowed.
+    """
+    import time
+    from urllib.error import URLError
+    from urllib.request import Request, urlopen
+    from profine.telemetry.consent import load_consent, env_opted_out
+    from profine.telemetry.recorder import _HTTP_TIMEOUT_SECONDS
+
+    record = load_consent()
+    if record is None:
+        print("Telemetry: consent not yet decided. Run `profine telemetry enable` first.")
+        return 1
+    if not record.granted:
+        print("Telemetry: consent DECLINED. Nothing will be sent until you run "
+              "`profine telemetry enable`.")
+        return 1
+    if env_opted_out():
+        print("Telemetry: PROFINE_NO_TELEMETRY is set — runtime opt-out is in effect.")
+        return 1
+
+    api_url = "https://api.profine.ai"
+    endpoint = f"{api_url}/api/telemetry/anon"
+    print(f"Telemetry doctor")
+    print(f"  install_id: {record.install_id}")
+    print(f"  endpoint:   {endpoint}")
+    print(f"  timeout:    {_HTTP_TIMEOUT_SECONDS:.0f}s per attempt, 1 retry")
+
+    # Send a shape the server will accept (matches _drain_payload's schema).
+    # The probe deliberately uses a synthetic fingerprint_hash so probes are
+    # distinguishable from real runs by anyone querying the DB.
+    import hashlib
+    probe_marker = f"doctor_probe_{record.install_id}"
+    fp_hash = hashlib.sha256(probe_marker.encode()).hexdigest()
+    payload = json.dumps({
+        "client_version": "doctor-probe",
+        "install_id": record.install_id,
+        "fingerprint": {
+            "arch_class": "probe",
+            "param_bucket": "probe",
+            "hardware_class": "probe",
+            "precision": "probe",
+            "optimizer_class": "probe",
+            "has_compile": False,
+            "has_distributed": False,
+            "fingerprint_hash": fp_hash,
+            "framework": "probe",
+        },
+        "outcomes": [],
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+
+    for attempt in (1, 2):
+        t0 = time.perf_counter()
+        try:
+            req = Request(endpoint, data=payload, headers=headers, method="POST")
+            with urlopen(req, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+                body = resp.read(512)
+                dt = time.perf_counter() - t0
+                print(f"  attempt {attempt}: HTTP {resp.status} in {dt:.2f}s")
+                if body:
+                    print(f"    body: {body[:200]!r}")
+                print("Result: OK — endpoint reachable and accepted the probe.")
+                return 0
+        except URLError as e:
+            dt = time.perf_counter() - t0
+            print(f"  attempt {attempt}: FAILED in {dt:.2f}s ({type(e).__name__}: {e})")
+            if attempt == 1:
+                print(f"  (backend may have been asleep; retrying after 2s)")
+                time.sleep(2.0)
+        except Exception as e:  # noqa: BLE001
+            dt = time.perf_counter() - t0
+            print(f"  attempt {attempt}: FAILED in {dt:.2f}s ({type(e).__name__}: {e})")
+            break
+
+    print("Result: FAILED — telemetry rows from this machine are being dropped.")
+    print("Common causes: backend asleep (free-tier Render dyno), DNS/TLS issue, "
+          "or local firewall blocking outbound HTTPS to api.profine.ai.")
     return 1
 
 
@@ -488,11 +578,20 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
         if effective_locals and i == 1:
             print(f"  (with {len(effective_locals)} local module(s) as context)")
 
-        result = editor.edit(
-            current_source, candidate, arch_data, user_prefs,
-            entry_path=entry_rel, local_modules=effective_locals,
-            debug_dir=output_dir / "_debug",
-        )
+        # Treat a failed edit on one candidate as "skipped, keep going" so
+        # a single bad LLM response doesn't throw away the speedups already
+        # stacked earlier in this run.
+        try:
+            result = editor.edit(
+                current_source, candidate, arch_data, user_prefs,
+                entry_path=entry_rel, local_modules=effective_locals,
+                debug_dir=output_dir / "_debug",
+            )
+        except Exception as exc:  # noqa: BLE001 — narrowed via the skipped path
+            reason = f"editor raised {type(exc).__name__}: {exc}"
+            skipped.append((candidate.entry_id, reason))
+            print(f"  skipped: {reason}")
+            continue
 
         # Per-iteration artifacts under NN_<entry_id>/ for traceability.
         iter_dir = out / f"{i:02d}_{candidate.entry_id}"
@@ -508,6 +607,15 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
             if excl_group:
                 applied_exclusive_groups.add(excl_group)
             last_explanation = result.explanation
+            # Snapshot the cumulative pipeline state after this iteration so
+            # the benchmarker's auto-peel can rewind to any prior point if a
+            # later optimization (or this one) crashes at runtime.
+            _save_cumulative_snapshot(
+                iter_dir / "cumulative",
+                entry_source=current_source,
+                extras=cumulative_extras,
+                applied_ids=applied_ids,
+            )
             print(f"  applied. (entry diff: {_diff_line_count(result.diff)} lines, "
                   f"extra files: {len(result.extra_file_edits)})")
         else:
@@ -575,6 +683,49 @@ def cmd_edit(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     if not applied_ids:
         return 1
     return 0
+
+
+def _save_cumulative_snapshot(
+    snap_dir: Path,
+    *,
+    entry_source: str,
+    extras: dict[str, str],
+    applied_ids: list[str],
+) -> None:
+    """Write the cumulative editor state after one iteration so auto-peel
+    can copy it back over `<output>/edit/` to undo later optimizations."""
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    (snap_dir / "edited_train.py").write_text(entry_source, encoding="utf-8")
+    if extras:
+        files_dir = snap_dir / "files"
+        for rel, content in extras.items():
+            target = files_dir / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+    (snap_dir / "applied_ids.json").write_text(
+        json.dumps(applied_ids), encoding="utf-8",
+    )
+
+
+def _restore_cumulative_snapshot(snap_dir: Path, edit_out: Path) -> list[str]:
+    """Copy a snapshot onto `<output>/edit/` and return its applied_ids."""
+    import shutil
+
+    edit_out.mkdir(parents=True, exist_ok=True)
+    edited_path = edit_out / "edited_train.py"
+    shutil.copyfile(snap_dir / "edited_train.py", edited_path)
+
+    files_dir = edit_out / "files"
+    if files_dir.exists():
+        shutil.rmtree(files_dir)
+    snap_files = snap_dir / "files"
+    if snap_files.exists():
+        shutil.copytree(snap_files, files_dir)
+
+    applied_path = snap_dir / "applied_ids.json"
+    if applied_path.exists():
+        return json.loads(applied_path.read_text(encoding="utf-8"))
+    return []
 
 
 def _diff_line_count(diff_text: str) -> int:
@@ -674,6 +825,11 @@ def _cmd_benchmark_body(args: Namespace, output_dir: Path, user_prefs: str | Non
         )
         if applied_ids:
             sugg = output_dir / "suggest" / "suggestion_report.json"
+            # When --edit-dir points outside output_dir (re-benchmarking an
+            # existing pipeline's edits), the suggest report lives next to
+            # edit_dir, not under output_dir.
+            if not sugg.exists():
+                sugg = edit_dir.parent / "suggest" / "suggestion_report.json"
             if sugg.exists():
                 try:
                     candidates = json.loads(sugg.read_text(encoding="utf-8")).get("candidates", [])
@@ -878,6 +1034,86 @@ def cmd_run_all(args: Namespace, output_dir: Path, user_prefs: str | None) -> in
     )
 
 
+_STAGE_ARTIFACTS: dict[str, tuple[str, ...]] = {
+    "read":      ("read/architecture_record.json",),
+    "profile":   ("profile/profile_record.json",),
+    "interpret": ("interpret/bottleneck_report.json",),
+    "suggest":   ("suggest/suggestion_report.json",),
+    "edit":      ("edit/edited_train.py", "edit/change_manifest.json"),
+}
+_LLM_STAGES: tuple[str, ...] = ("read", "interpret", "suggest", "edit")
+
+_PREFLIGHT_MINUTES_PER_MODAL_RUN = float(
+    os.environ.get("PROFINE_PREFLIGHT_MINUTES_PER_RUN", "5")
+)
+_BENCHMARK_MODAL_RUNS = 2
+_DEFAULT_TOP_N = 10
+_COST_PROMPT_THRESHOLD_USD = float(os.environ.get("PROFINE_COST_PROMPT_THRESHOLD", "5"))
+
+
+def _stage_done(output_dir: Path, stage: str) -> bool:
+    return all((output_dir / rel).exists() for rel in _STAGE_ARTIFACTS[stage])
+
+
+def _preflight_estimate(
+    args: Namespace,
+    output_dir: Path,
+    skipped: list[str] | None = None,
+) -> int:
+    """Print a one-line cost summary before run-all kicks off.
+
+    Pass `skipped` to mark stages already done at pipeline entry so we
+    don't claim a stage was resumed when it just ran moments earlier.
+    """
+    import sys
+    from profine.schema.hardware import get_hardware
+
+    try:
+        hw = get_hardware(args.hardware)
+        hw_label = getattr(hw, "name", args.hardware)
+        cost_per_hour = float(getattr(hw, "cost_per_hour", 0.0) or 0.0)
+    except Exception:
+        hw_label = args.hardware
+        cost_per_hour = 0.0
+
+    no_resume = bool(getattr(args, "no_resume", False))
+    if skipped is None:
+        skipped = [
+            stage for stage in _STAGE_ARTIFACTS
+            if not no_resume and _stage_done(output_dir, stage)
+        ]
+    llm_calls = sum(1 for s in _LLM_STAGES if s not in skipped)
+    modal_runs = (0 if "profile" in skipped else 1) + _BENCHMARK_MODAL_RUNS
+    minutes = modal_runs * _PREFLIGHT_MINUTES_PER_MODAL_RUN
+    dollars = minutes / 60.0 * cost_per_hour
+
+    summary = (
+        f"Estimated cost: ~${dollars:.2f} on [bold]{hw_label}[/bold] "
+        f"(~{minutes:.0f} min, {modal_runs} GPU run{'s' if modal_runs != 1 else ''}, "
+        f"{llm_calls} LLM call{'s' if llm_calls != 1 else ''})"
+    )
+    if skipped:
+        summary += f"  ·  resuming, skipping [dim]{', '.join(skipped)}[/dim]"
+    ui.info(summary)
+
+    if dollars < _COST_PROMPT_THRESHOLD_USD:
+        return 0
+    if getattr(args, "yes", False):
+        return 0
+    if not sys.stdin.isatty():
+        return 0
+    ui.info(f"[yellow]Estimate exceeds ${_COST_PROMPT_THRESHOLD_USD:.0f} threshold.[/yellow]")
+    try:
+        reply = input("Continue? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        ui.error("Aborted.")
+        return 1
+    if reply in ("", "y", "yes"):
+        return 0
+    ui.error("Aborted by user.")
+    return 1
+
+
 def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | None) -> int:
     """Internal pipeline body. Same logic as before; recorder wrapping
     lives in cmd_run_all() so this stays focused on orchestration."""
@@ -894,35 +1130,55 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
     def _step_header(idx: int, name: str, desc: str) -> None:
         ui.header(desc, step=f"{idx}/{len(steps)}")
 
-    _step_header(1, *steps[0])
-    read_args = Namespace(
-        script=script, provider=args.provider, api_key=args.api_key,
-        model=args.model,
-        base_url=args.base_url,
-        seed=args.seed, output=args.output, prefs=args.prefs,
-    )
-    rc = cmd_read(read_args, output_dir, user_prefs)
+    no_resume = bool(getattr(args, "no_resume", False))
+    # Snapshot at entry: the cost summary further down must reflect what
+    # was on disk *before* we ran anything, not after read writes to it.
+    initially_done = [
+        stage for stage in _STAGE_ARTIFACTS
+        if not no_resume and _stage_done(output_dir, stage)
+    ]
+
+    def _skip_if_done(idx: int, stage: str) -> bool:
+        if no_resume or not _stage_done(output_dir, stage):
+            return False
+        _step_header(idx, *steps[idx - 1])
+        first_artifact = output_dir / _STAGE_ARTIFACTS[stage][0]
+        ui.success(f"Skipped — resuming from existing {stage}: [dim]{first_artifact}[/dim]")
+        return True
+
+    if not _skip_if_done(1, "read"):
+        _step_header(1, *steps[0])
+        read_args = Namespace(
+            script=script, provider=args.provider, api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            seed=args.seed, output=args.output, prefs=args.prefs,
+        )
+        rc = cmd_read(read_args, output_dir, user_prefs)
+        if rc != 0:
+            ui.error("Read failed — aborting pipeline.")
+            return rc
+
+    rc = _preflight_estimate(args, output_dir, skipped=initially_done)
     if rc != 0:
-        ui.error("Read failed — aborting pipeline.")
         return rc
 
-    _step_header(2, *steps[1])
-    profile_args = Namespace(
-        script=script, hardware=args.hardware, steps=args.steps,
-        warmup=args.warmup, timeout=args.timeout,
-        warmstart=getattr(args, "warmstart", False),
-        provider=args.provider, api_key=args.api_key,
-        model=args.model,
-        base_url=args.base_url,
-        seed=args.seed, output=args.output, prefs=args.prefs,
-    )
-    # Call the body directly so the inner _emit_telemetry_after wrapper
-    # doesn't fire — run-all already wraps the whole pipeline. The outer
-    # wrapper produces the single canonical telemetry batch at the end.
-    rc = _cmd_profile_body(profile_args, output_dir, user_prefs)
-    if rc != 0:
-        ui.error("Profile failed — aborting pipeline.")
-        return rc
+    if not _skip_if_done(2, "profile"):
+        _step_header(2, *steps[1])
+        profile_args = Namespace(
+            script=script, hardware=args.hardware, steps=args.steps,
+            warmup=args.warmup, timeout=args.timeout,
+            warmstart=getattr(args, "warmstart", False),
+            provider=args.provider, api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            seed=args.seed, output=args.output, prefs=args.prefs,
+        )
+        # Skip the inner telemetry wrapper — run-all owns the single batch.
+        rc = _cmd_profile_body(profile_args, output_dir, user_prefs)
+        if rc != 0:
+            ui.error("Profile failed — aborting pipeline.")
+            return rc
 
     profile_record = output_dir / "profile" / "profile_record.json"
     if profile_record.exists():
@@ -932,56 +1188,58 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
             ui.error("Cannot continue without valid profile data — aborting pipeline.")
             return 1
 
-    _step_header(3, *steps[2])
-    interpret_args = Namespace(
-        profile_dir=str(output_dir / "profile"),
-        provider=args.provider, api_key=args.api_key,
-        model=args.model,
-        base_url=args.base_url,
-        seed=args.seed, output=args.output, prefs=args.prefs,
-    )
-    rc = cmd_interpret(interpret_args, output_dir, user_prefs)
-    if rc != 0:
-        ui.error("Interpret failed — aborting pipeline.")
-        return rc
+    if not _skip_if_done(3, "interpret"):
+        _step_header(3, *steps[2])
+        interpret_args = Namespace(
+            profile_dir=str(output_dir / "profile"),
+            provider=args.provider, api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            seed=args.seed, output=args.output, prefs=args.prefs,
+        )
+        rc = cmd_interpret(interpret_args, output_dir, user_prefs)
+        if rc != 0:
+            ui.error("Interpret failed — aborting pipeline.")
+            return rc
 
-    _step_header(4, *steps[3])
-    suggest_args = Namespace(
-        interpret_dir=str(output_dir / "interpret"),
-        arch_dir=None, profile_dir=None,
-        provider=args.provider, api_key=args.api_key,
-        model=args.model,
-        base_url=args.base_url,
-        seed=args.seed, output=args.output, prefs=args.prefs,
-    )
-    rc = cmd_suggest(suggest_args, output_dir, user_prefs)
-    if rc != 0:
-        ui.error("Suggest failed — aborting pipeline.")
-        return rc
+    if not _skip_if_done(4, "suggest"):
+        _step_header(4, *steps[3])
+        suggest_args = Namespace(
+            interpret_dir=str(output_dir / "interpret"),
+            arch_dir=None, profile_dir=None,
+            provider=args.provider, api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            seed=args.seed, output=args.output, prefs=args.prefs,
+        )
+        rc = cmd_suggest(suggest_args, output_dir, user_prefs)
+        if rc != 0:
+            ui.error("Suggest failed — aborting pipeline.")
+            return rc
 
-    # Apply all ranked candidates by default, or --top N if provided.
-    _step_header(5, *steps[4])
-    top_n = getattr(args, "top", None)
-    if top_n is None:
-        sugg_path = output_dir / "suggest" / "suggestion_report.json"
-        if sugg_path.exists():
-            sugg = json.loads(sugg_path.read_text(encoding="utf-8"))
-            top_n = len(sugg.get("candidates", []))
-        else:
-            top_n = 10
-    edit_args = Namespace(
-        script=script,
-        suggestion_dir=str(output_dir / "suggest"),
-        optimization=None, top=top_n,
-        provider=args.provider, api_key=args.api_key,
-        model=args.model,
-        base_url=args.base_url,
-        seed=args.seed, output=args.output, prefs=args.prefs,
-    )
-    rc = cmd_edit(edit_args, output_dir, user_prefs)
-    if rc != 0:
-        ui.error("Edit failed (no optimizations applied) — aborting pipeline.")
-        return rc
+    if not _skip_if_done(5, "edit"):
+        _step_header(5, *steps[4])
+        top_n = getattr(args, "top", None)
+        if top_n is None:
+            sugg_path = output_dir / "suggest" / "suggestion_report.json"
+            if sugg_path.exists():
+                sugg = json.loads(sugg_path.read_text(encoding="utf-8"))
+                top_n = len(sugg.get("candidates", []))
+            else:
+                top_n = _DEFAULT_TOP_N
+        edit_args = Namespace(
+            script=script,
+            suggestion_dir=str(output_dir / "suggest"),
+            optimization=None, top=top_n,
+            provider=args.provider, api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            seed=args.seed, output=args.output, prefs=args.prefs,
+        )
+        rc = cmd_edit(edit_args, output_dir, user_prefs)
+        if rc != 0:
+            ui.error("Edit failed (no optimizations applied) — aborting pipeline.")
+            return rc
 
     _step_header(6, *steps[5])
     benchmark_args = Namespace(
@@ -998,6 +1256,12 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
         seed=args.seed, output=args.output, prefs=args.prefs,
     )
     rc = _cmd_benchmark_body(benchmark_args, output_dir, user_prefs)
+    rc, peeled = _auto_peel_on_crash(rc, output_dir, benchmark_args, user_prefs)
+    if peeled:
+        ui.info(
+            f"[yellow]Auto-peeled {len(peeled)} optimization(s) that crashed at runtime: "
+            f"{', '.join(peeled)}[/yellow]"
+        )
 
     # Write consolidated SUMMARY.md that aggregates every step's key findings.
     try:
@@ -1014,6 +1278,69 @@ def _cmd_run_all_pipeline(args: Namespace, output_dir: Path, user_prefs: str | N
     else:
         ui.error(f"Pipeline finished with errors (exit {rc}). Partial results in: {output_dir}")
     return rc
+
+
+def _auto_peel_on_crash(
+    rc: int,
+    output_dir: Path,
+    benchmark_args: Namespace,
+    user_prefs: str | None,
+) -> tuple[int, list[str]]:
+    """Drop the last applied optimization and re-benchmark until success
+    or only one optimization remains. Returns (final_rc, peeled_ids)."""
+    if rc == 0:
+        return rc, []
+    edit_dir = output_dir / "edit"
+    manifest_path = edit_dir / "change_manifest.json"
+    if not manifest_path.exists():
+        return rc, []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return rc, []
+    applied = list(manifest.get("applied_ids") or [])
+    if len(applied) <= 1:
+        return rc, []
+
+    peeled: list[str] = []
+    while len(applied) > 1 and rc != 0:
+        bad = applied[-1]
+        snap_dir = _find_snapshot_for(edit_dir, applied[:-1])
+        if snap_dir is None:
+            break
+        new_applied = _restore_cumulative_snapshot(snap_dir, edit_dir)
+        ui.info(
+            f"[yellow]Optimized run crashed; auto-peeling [bold]{bad}[/bold] "
+            f"and retrying benchmark with {len(new_applied)} remaining "
+            f"optimization(s)…[/yellow]"
+        )
+        peeled.append(bad)
+        applied = new_applied
+        rc = _cmd_benchmark_body(benchmark_args, output_dir, user_prefs)
+
+    if peeled:
+        manifest["applied_ids"] = applied
+        manifest.setdefault("auto_peeled", []).extend(peeled)
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    return rc, peeled
+
+
+def _find_snapshot_for(edit_dir: Path, target_applied: list[str]) -> Path | None:
+    """Return the iteration snapshot dir whose cumulative applied_ids match."""
+    if not target_applied:
+        return None
+    for sub in sorted(edit_dir.glob("*_*/cumulative")):
+        ids_path = sub / "applied_ids.json"
+        if not ids_path.exists():
+            continue
+        try:
+            ids = json.loads(ids_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if ids == target_applied:
+            return sub
+    return None
 
 
 def _auto_detect_script(output_dir: Path) -> str | None:

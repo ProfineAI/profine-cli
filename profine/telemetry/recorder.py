@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.error import URLError
@@ -47,7 +48,15 @@ from profine.telemetry.fingerprint import Fingerprint
 
 # 5 seconds is generous for a small JSON POST. If the backend is
 # overloaded, the recorder dies quietly and the run continues.
-_HTTP_TIMEOUT_SECONDS: float = 5.0
+_HTTP_TIMEOUT_SECONDS: float = 15.0
+# Render free/starter tiers sleep after idle. The first request after sleep
+# wakes the dyno (~9s observed), so retry once with a short backoff to give
+# subsequent traffic from this process a chance to land. Tests override this
+# via PROFINE_TELEMETRY_RETRY_BACKOFF to keep daemon threads short-lived.
+import os as _os
+_HTTP_RETRY_BACKOFF_SECONDS: float = float(
+    _os.environ.get("PROFINE_TELEMETRY_RETRY_BACKOFF", "2.0")
+)
 
 
 log = logging.getLogger(__name__)
@@ -226,7 +235,10 @@ class TelemetryRecorder:
         # Snapshot so we can release the lock while joining (joins block).
         with self._lock:
             threads = list(self._flush_threads)
-        join_timeout = _HTTP_TIMEOUT_SECONDS + 1.0
+        # Cover one timed-out attempt + backoff + a second attempt. Worst-case
+        # this delays CLI exit on a sleeping-backend cold-start; better than
+        # dropping the row.
+        join_timeout = (_HTTP_TIMEOUT_SECONDS * 2) + _HTTP_RETRY_BACKOFF_SECONDS + 1.0
         for t in threads:
             t.join(timeout=join_timeout)
 
@@ -275,21 +287,40 @@ class TelemetryRecorder:
             log.debug("telemetry POST failed", exc_info=True)
 
     def _post(self, payload: dict[str, Any]) -> None:
-        """Synchronous POST. Always invoked on a background thread."""
+        """Synchronous POST with one retry on transport error.
+
+        Always invoked on a background thread. We retry once because the
+        anon endpoint is hosted on Render — the first request after the
+        dyno sleeps wakes it (~9s observed) and times out under any
+        short HTTP timeout, but a follow-up request usually lands.
+        """
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
-        request = Request(
-            self._endpoint_for_mode(),
-            data=body,
-            headers=headers,
-            method="POST",
+        endpoint = self._endpoint_for_mode()
+        attempts = 2
+        last_err: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            request = Request(endpoint, data=body, headers=headers, method="POST")
+            try:
+                with urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
+                    # Drain the response body so the kernel doesn't keep
+                    # the socket in CLOSE_WAIT.
+                    resp.read(4096)
+                return
+            except URLError as e:
+                last_err = e
+                log.debug(
+                    "telemetry POST attempt %d/%d failed: %s",
+                    attempt, attempts, e,
+                )
+                if attempt < attempts:
+                    time.sleep(_HTTP_RETRY_BACKOFF_SECONDS)
+        # All attempts failed — surface at WARNING so users see at least one
+        # signal instead of total silence when the backend is unreachable.
+        log.warning(
+            "telemetry endpoint unreachable after %d attempts (%s). "
+            "Row dropped. Run `profine telemetry doctor` to diagnose.",
+            attempts, last_err,
         )
-        try:
-            with urlopen(request, timeout=_HTTP_TIMEOUT_SECONDS) as resp:
-                # Drain the response body so the kernel doesn't keep
-                # the socket in CLOSE_WAIT.
-                resp.read(4096)
-        except URLError as e:
-            log.debug("telemetry endpoint unreachable: %s", e)

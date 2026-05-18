@@ -151,14 +151,14 @@ def test_cli_argparse_defaults_flow_from_settings():
     from profine.cli.main import build_parser
 
     parser = build_parser()
-    profile_args = parser.parse_args(["profile", "train.py"])
+    profile_args = parser.parse_args(["profile", "train.py", "--hardware", "1x_a100"])
     assert profile_args.timeout == DEFAULTS.default_modal_timeout
     assert profile_args.steps == DEFAULTS.default_steps
     assert profile_args.warmup == DEFAULTS.default_warmup_steps
-    assert profile_args.hardware == DEFAULTS.default_hardware
+    assert profile_args.hardware == "1x_a100"
 
     bench_args = parser.parse_args(
-        ["benchmark", "train.py", "--optimized", "edited.py"]
+        ["benchmark", "train.py", "--optimized", "edited.py", "--hardware", "1x_a100"]
     )
     assert bench_args.timeout == DEFAULTS.default_modal_timeout
     assert bench_args.steps == DEFAULTS.default_steps

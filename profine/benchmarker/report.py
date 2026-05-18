@@ -52,6 +52,29 @@ def generate_report(
         )
     lines.append("")
 
+    b = comparison.baseline_step_stats
+    c_stats = comparison.candidate_step_stats
+    if b.n_samples and c_stats.n_samples:
+        lines.append("### Measurement stability")
+        lines.append("")
+        lines.append("| Run | p25 (ms) | p50 (ms) | p75 (ms) | CV | N |")
+        lines.append("|---|---|---|---|---|---|")
+        lines.append(
+            f"| Baseline  | {b.p25:.2f} | {b.p50:.2f} | {b.p75:.2f} "
+            f"| {b.cv*100:.1f}% | {b.n_samples} |"
+        )
+        lines.append(
+            f"| Optimized | {c_stats.p25:.2f} | {c_stats.p50:.2f} | {c_stats.p75:.2f} "
+            f"| {c_stats.cv*100:.1f}% | {c_stats.n_samples} |"
+        )
+        lines.append("")
+        if comparison.noisy:
+            lines.append(
+                "> ⚠️  High step-time variance — consider bumping `--steps` for a tighter estimate."
+            )
+            lines.append("")
+
+
     # Projected savings — translate step-time improvement into hours and dollars.
     savings = _projected_savings(comparison, cost_per_hour)
     if savings:
@@ -83,14 +106,40 @@ def generate_report(
 def _tldr(comparison: BenchmarkComparison, optimization_name: str) -> str:
     """One-line headline: did it work, by how much."""
     speedup = comparison.speedup_pct
-    if speedup >= 3.0 and comparison.correctness.passed:
+    c = comparison.correctness
+    if c.tolerance_widened:
+        cat = c.tolerance_widened_for or "this optimization"
+        correctness_note = (
+            f"correctness preserved (at relaxed tolerance for {cat}: "
+            f"rtol={c.rtol:g}, atol={c.atol:g})"
+        )
+    else:
+        correctness_note = "correctness preserved"
+    band = _speedup_band_suffix(comparison)
+    if speedup >= 3.0 and c.passed:
         mult = 100.0 / (100.0 - speedup) if speedup < 100 else float("inf")
-        return f"## ✅ {speedup:.1f}% faster ({mult:.2f}× speedup), correctness preserved."
-    if speedup >= 3.0 and not comparison.correctness.passed:
+        return f"## ✅ {speedup:.1f}% faster ({mult:.2f}× speedup{band}), {correctness_note}."
+    if speedup >= 3.0 and not c.passed:
         return f"## ⚠️ {speedup:.1f}% faster, but loss curves diverge — review before shipping."
     if speedup <= -2.0:
         return f"## ❌ {abs(speedup):.1f}% regression — do not ship."
     return f"## ➖ No meaningful change ({speedup:+.1f}%)."
+
+
+def _speedup_band_suffix(c: BenchmarkComparison) -> str:
+    """Inline confidence band on the headline, hidden when the run is tight."""
+    headline = c.speedup_pct
+    lo = c.speedup_pct_p25
+    hi = c.speedup_pct_p75
+    if not c.noisy and (hi - lo) <= 4.0:
+        return ""
+    if lo <= 0 and headline > 0:
+        lo_str = "no change"
+    else:
+        lo_mult = 100.0 / (100.0 - lo) if lo < 100 else float("inf")
+        lo_str = f"{lo_mult:.2f}×"
+    hi_mult = 100.0 / (100.0 - hi) if hi < 100 else float("inf")
+    return f"; {lo_str}–{hi_mult:.2f}× across step-time p25–p75"
 
 
 def _projected_savings(
@@ -100,7 +149,7 @@ def _projected_savings(
     speedup = comparison.speedup_pct
     if speedup <= 0:
         return []
-    fraction_saved = speedup / 100.0
+    fraction_saved = min(speedup / 100.0, 0.99)
     out: list[str] = [
         f"For every **100 hours** of training time saved at the optimized step time, "
         f"you'd have spent **{100.0 / (1.0 - fraction_saved):.0f} hours** on the baseline.",

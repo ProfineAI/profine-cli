@@ -41,11 +41,19 @@ class StepController:
 
     def __init__(self, total_steps: int, wall_clock_limit_s: float = 900.0) -> None:
         import os
-        # Env var override: the executor sets this to enforce the real step limit
-        # regardless of what the LLM wrote in the instrumented script.
-        override = os.environ.get("PROFINE_TOTAL_STEPS")
-        self.total_steps = int(override) if override else total_steps
-        self.wall_clock_limit_s = wall_clock_limit_s
+        # Executor sets these to override whatever the LLM wrote into the
+        # instrumented install_hooks() call.
+        step_override = os.environ.get("PROFINE_TOTAL_STEPS")
+        wall_override = os.environ.get("PROFINE_WALL_CLOCK_LIMIT")
+        self.total_steps = int(step_override) if step_override else total_steps
+        self.wall_clock_limit_s = float(wall_override) if wall_override else wall_clock_limit_s
+        # Probe-and-adapt: after this many steps we have a usable step-time
+        # estimate and may lower total_steps to fit the wall-clock budget.
+        self._probe_steps = int(os.environ.get("PROFINE_ADAPT_PROBE_STEPS", "3"))
+        # Floor below which the sample count is statistically useless;
+        # below this we'd rather take the wall-clock-cap fallback.
+        self._adapt_floor = int(os.environ.get("PROFINE_ADAPT_MIN_STEPS", "10"))
+        self._adapted: bool = False
         self.steps_completed = 0
         self.step_times_ms: list[float] = []
         self.memory_samples_bytes: list[int] = []
@@ -113,6 +121,7 @@ class StepController:
             self._profiler.step()
 
         elapsed = time.perf_counter() - self._wall_start
+        self._maybe_adapt(elapsed)
         if self.steps_completed >= self.total_steps:
             raise StepLimitReached(
                 f"Completed {self.steps_completed}/{self.total_steps} steps"
@@ -123,6 +132,35 @@ class StepController:
                 f"Wall clock limit reached ({elapsed:.0f}s >= {self.wall_clock_limit_s:.0f}s) "
                 f"after {self.steps_completed} steps"
             )
+
+    def _maybe_adapt(self, elapsed: float) -> None:
+        """Lower total_steps when the observed step time would otherwise
+        blow the wall-clock budget."""
+        if self._adapted or self.steps_completed < self._probe_steps:
+            return
+        # Median of inter-step times is robust to compile/cudagraph cold-start
+        # outliers; fall back to elapsed-based mean when we don't yet have
+        # enough samples (e.g. unit tests that drive _maybe_adapt directly).
+        import statistics
+        if len(self.step_times_ms) >= 2:
+            avg_step_s = statistics.median(self.step_times_ms) / 1000.0
+        else:
+            avg_step_s = elapsed / self.steps_completed
+        if avg_step_s <= 0:
+            return
+        # Even when the budget is already gone we propose the floor —
+        # better than letting the wall-clock cap kill a step in flight.
+        remaining_budget = max(0.0, self.wall_clock_limit_s - elapsed)
+        fits = int(remaining_budget / avg_step_s)
+        new_total = max(self._adapt_floor, self.steps_completed + fits)
+        if new_total < self.total_steps:
+            print(
+                f"profine: avg step time ~{avg_step_s * 1000:.0f}ms — "
+                f"reducing total_steps from {self.total_steps} to {new_total} "
+                f"so the profile finishes inside the wall-clock budget."
+            )
+            self.total_steps = new_total
+        self._adapted = True
 
 
 class LossCapture:

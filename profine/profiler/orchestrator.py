@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -69,6 +70,11 @@ class ProfileResult:
         report_path.write_text(self.markdown, encoding="utf-8")
 
         return {"record": record_path, "report": report_path}
+
+
+# Cap on auto-extended Modal timeouts. Each consecutive timeout doubles
+# the container budget; past this ceiling we bail and ask for fewer --steps.
+_MAX_AUTO_TIMEOUT_SECONDS = int(os.environ.get("PROFINE_MAX_AUTO_TIMEOUT", "3600"))
 
 
 class ProfileOrchestrator:
@@ -226,10 +232,10 @@ class ProfileOrchestrator:
                 kind = _classify_error(error_text)
                 print(f"  [attempt {attempt + 1}] Failed [{kind}]: {error_text[:200]}")
 
-                # Bail out if the previous attempt failed with the same
-                # signature — re-running an identical container wastes
-                # Modal time and LLM calls.
-                if _same_error_signature(error_text, last_error):
+                # Bail on identical repeat failures — except for timeouts,
+                # since the timeout handler doubles the budget so the next
+                # attempt is not identical.
+                if kind != "timeout" and _same_error_signature(error_text, last_error):
                     print("  [healing] Same failure as previous attempt; aborting.")
                     last_error = error_text
                     break
@@ -263,6 +269,22 @@ class ProfileOrchestrator:
                         )
                 elif kind == "infra":
                     print("  [healing] Treating as transient infra error; retrying.")
+                elif kind == "timeout":
+                    old_t = executor.timeout_seconds
+                    new_t = min(old_t * 2, _MAX_AUTO_TIMEOUT_SECONDS)
+                    if new_t > old_t:
+                        executor.timeout_seconds = new_t
+                        print(
+                            f"  [healing] Modal container hit {old_t}s wall-clock "
+                            f"cap; doubling to {new_t}s and retrying."
+                        )
+                    else:
+                        print(
+                            f"  [healing] Already at the {_MAX_AUTO_TIMEOUT_SECONDS}s "
+                            "timeout ceiling; cannot extend further. Reduce --steps "
+                            "for this script, or pass --timeout=N to override."
+                        )
+                        break
                 else:
                     hint = _local_package_hint(error_text, local_names)
                     instrumented = self._heal(
@@ -328,6 +350,9 @@ def _build_record(
     steps_completed = payload.get("steps_completed", len(all_step_times))
 
     effective_warmup = detect_stabilization_point(all_step_times, min_warmup=warmup_steps)
+    # Never strip the whole array: if adaptation shortened the run, keep at
+    # least the last few samples so downstream analysis isn't zero-sample.
+    effective_warmup = min(effective_warmup, max(0, len(all_step_times) - 3))
     steady_times = all_step_times[effective_warmup:]
     warmup_times = all_step_times[:effective_warmup]
 
@@ -419,13 +444,19 @@ def _classify_error(error: str) -> str:
     """Route a Modal failure to the right healer.
 
     Returns: "missing_dep" (importable package not installed in image),
-    "deps" (bad pip name during build), "infra" (Modal/network), or
-    "script" (script-level bug fixable by rewriting source)."""
+    "deps" (bad pip name during build), "infra" (Modal/network),
+    "timeout" (Modal container hit its wall-clock cap — needs more time,
+    not a code rewrite), or "script" (script-level bug fixable by rewriting
+    source)."""
     e = (error or "").lower()
     if "image build" in e and "failed" in e:
         return "deps"
     if "no matching distribution" in e or "could not find a version" in e:
         return "deps"
+    # Modal container exhausted its wall-clock budget. The script is fine;
+    # we just need more time (or fewer steps).
+    if "hit its timeout" in e or "functiontimeouterror" in e:
+        return "timeout"
     if any(s in e for s in ("connectionreset", "connection reset",
                               "connectiontimeout", "connection timed out",
                               "network is unreachable", "modal app failed to")):

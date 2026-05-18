@@ -27,11 +27,11 @@ def test_parser_subcommands_present():
     parser = build_parser()
     # Each subcommand should accept its required positional args
     parser.parse_args(["read", "train.py"])
-    parser.parse_args(["profile", "train.py"])
+    parser.parse_args(["profile", "train.py", "--hardware", "1x_a100"])
     parser.parse_args(["interpret", "--profile-dir", "x"])
     parser.parse_args(["suggest", "--interpret-dir", "x"])
     parser.parse_args(["edit", "train.py", "--suggestion-dir", "x"])
-    parser.parse_args(["benchmark", "train.py", "--optimized", "y.py"])
+    parser.parse_args(["benchmark", "train.py", "--optimized", "y.py", "--hardware", "1x_a100"])
 
 
 def test_main_with_no_command_returns_1():

@@ -31,6 +31,18 @@ class CorrectnessVerdict:
     rtol: float = 1e-2
     atol: float = 1e-4
     notes: str = ""
+    tolerance_widened: bool = False
+    tolerance_widened_for: str = ""
+
+
+@dataclass(slots=True)
+class StepTimeStats:
+    """Distribution summary for a run's step times (steady state, ms)."""
+    p25: float = 0.0
+    p50: float = 0.0
+    p75: float = 0.0
+    cv: float = 0.0       # coefficient of variation (stddev / mean)
+    n_samples: int = 0
 
 
 @dataclass(slots=True)
@@ -43,6 +55,11 @@ class BenchmarkComparison:
     util_delta_pct: float = 0.0      # GPU util change (negative = regressed)
     verdict: str = "NO-OP"           # "PASS" | "NO-OP" | "REGRESSION"
     summary: str = ""
+    baseline_step_stats: StepTimeStats = field(default_factory=StepTimeStats)
+    candidate_step_stats: StepTimeStats = field(default_factory=StepTimeStats)
+    speedup_pct_p25: float = 0.0     # conservative: p75 cand vs p25 base
+    speedup_pct_p75: float = 0.0     # optimistic:   p25 cand vs p75 base
+    noisy: bool = False              # True when either run's CV exceeds noise gate
 
 
 # Asymmetric thresholds: telling a customer "PASS" on a no-op is worse
@@ -76,9 +93,11 @@ def _decide_verdict(speedup_pct: float, util_delta_pct: float, correctness_passe
         speed = "NO-OP"
 
     if not correctness_passed:
-        # Report the speed result but flag correctness failure
+        # Correctness failure dominates the headline: a fast-but-wrong run is
+        # not something a user should ship. Lead with FAIL so a skimmer sees
+        # it before the speed number.
         if speed == "PASS":
-            return "PASS (correctness: FAIL)"
+            return "FAIL (correctness; speedup measured but loss diverged)"
         return "REGRESSION"
     return speed
 
@@ -102,9 +121,14 @@ def compare_payloads(
     """
     metrics: list[MetricDelta] = []
 
-    # Step time (lower is better)
-    b_step = _median(baseline.get("step_times_ms", []))
-    c_step = _median(candidate.get("step_times_ms", []))
+    # Per-run step-time distributions feed both the median delta below and
+    # the p25/p75 confidence band on the headline speedup.
+    b_times = baseline.get("step_times_ms", []) or []
+    c_times = candidate.get("step_times_ms", []) or []
+    baseline_stats = _step_stats(b_times)
+    candidate_stats = _step_stats(c_times)
+    b_step = baseline_stats.p50
+    c_step = candidate_stats.p50
     metrics.append(_make_delta("step_time_median_ms", b_step, c_step, lower_is_better=True))
 
     # Throughput (higher is better) — inverse of step time
@@ -139,6 +163,19 @@ def compare_payloads(
     summary = _build_summary(verdict, speedup_pct, memory_delta_pct,
                               util_delta_pct, correctness)
 
+    # Confidence band around the headline speedup. Conservative = optimized's
+    # slowest steps vs baseline's fastest; optimistic = the reverse.
+    if baseline_stats.p25 > 0 and candidate_stats.p75 > 0:
+        speedup_pct_p25 = (1 - candidate_stats.p75 / baseline_stats.p25) * 100
+    else:
+        speedup_pct_p25 = speedup_pct
+    if baseline_stats.p75 > 0 and candidate_stats.p25 > 0:
+        speedup_pct_p75 = (1 - candidate_stats.p25 / baseline_stats.p75) * 100
+    else:
+        speedup_pct_p75 = speedup_pct
+
+    noisy = baseline_stats.cv > _NOISY_CV_THRESHOLD or candidate_stats.cv > _NOISY_CV_THRESHOLD
+
     return BenchmarkComparison(
         metrics=metrics,
         correctness=correctness,
@@ -147,6 +184,11 @@ def compare_payloads(
         util_delta_pct=util_delta_pct,
         verdict=verdict,
         summary=summary,
+        baseline_step_stats=baseline_stats,
+        candidate_step_stats=candidate_stats,
+        speedup_pct_p25=speedup_pct_p25,
+        speedup_pct_p75=speedup_pct_p75,
+        noisy=noisy,
     )
 
 
@@ -253,3 +295,24 @@ def _mean(values: list[float]) -> float:
     if not values:
         return 0.0
     return sum(values) / len(values)
+
+
+# CV above this flags the run as too noisy to trust a tight headline.
+_NOISY_CV_THRESHOLD = 0.15
+
+
+def _step_stats(values: list[float]) -> StepTimeStats:
+    if not values:
+        return StepTimeStats()
+    s = sorted(values)
+    n = len(s)
+    p25 = s[max(0, (n - 1) // 4)]
+    p50 = _median(s)
+    p75 = s[min(n - 1, (3 * (n - 1)) // 4)]
+    mean = sum(s) / n
+    if n > 1 and mean > 0:
+        var = sum((x - mean) ** 2 for x in s) / (n - 1)
+        cv = (var ** 0.5) / mean
+    else:
+        cv = 0.0
+    return StepTimeStats(p25=p25, p50=p50, p75=p75, cv=cv, n_samples=n)

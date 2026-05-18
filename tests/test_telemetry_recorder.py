@@ -16,7 +16,12 @@ from urllib.error import URLError
 import pytest
 
 from profine.telemetry.fingerprint import Fingerprint
+from profine.telemetry import recorder as _recorder_mod
 from profine.telemetry.recorder import TelemetryRecorder
+
+# Shorten the retry backoff in tests so URLError-side-effect tests don't keep
+# a daemon thread alive (and racing the next test's urlopen mock) for 2s.
+_recorder_mod._HTTP_RETRY_BACKOFF_SECONDS = 0.0
 
 
 # ----------------------------- helpers ------------------------------------

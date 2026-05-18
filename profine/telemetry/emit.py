@@ -338,10 +338,18 @@ def _resolve_hardware(
     profile_record: dict[str, Any] | None,
     fallback_name: str | None,
 ):
-    """Build a stub HardwareConfig from whatever we know."""
+    """Build a stub HardwareConfig from whatever we know.
+
+    An explicitly passed `fallback_name` wins over `profile_record.hardware_name`:
+    in normal CLI use these are identical, but batch / replay callers (re-emitting
+    from on-disk artifacts for a *different* GPU than the one that produced the
+    profile record) need the override to land in the fingerprint. The parameter
+    name predates this — it really is the authoritative hardware when the caller
+    bothered to pass it.
+    """
     from profine.schema.hardware import HardwareConfig, get_hardware
 
-    name = (profile_record or {}).get("hardware_name") or fallback_name
+    name = fallback_name or (profile_record or {}).get("hardware_name")
     if not name:
         return None
     try:

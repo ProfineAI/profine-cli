@@ -49,11 +49,11 @@ MANIFEST: Final[dict[str, str]] = {
     "builder.py": "95125f663badc008eec68487da8deadecf0cb7f851bc29587fa59a425c8018c9",
     "consent.py": "55f9dfbf0123f72ec502992ac2a3e5a5fcffad4180f065840da443057b3f353b",
     "crash_class.py": "cd0394f0d12045e51da2a0d929df58cb25fb388aa51e3b95fde04376d4af8ecb",
-    "emit.py": "01d8623f69fcd7772898b7cadc355c87e96104e2b2427580dfc19dbe57234311",
+    "emit.py": "058c03bbfa395235324b64eb1afed102249e61223da0fd8e56779460e0f6d47f",
     "fields.py": "130514e10372a6759907d94a132f1b17df74c386cbbdb060b895eeb2319be460",
     "fingerprint.py": "22c337757717501a2024f3c612650200138c79c788d24d2bd2d9b54405c27510",
     "priors.py": "6efe4ba19d6a64e01b3ad62eed67c43b504f6d8218f93d04b5cb177e46db7c1c",
-    "recorder.py": "9945fb709152d44892fd832ab84848d567ce316d3b73f04128f51037bb82bd0d",
+    "recorder.py": "de575e93a6396f5c7fd5d13b08c09309ade07e0b8a34cd4e0cd67591879a137c",
 }
 # ---- END GENERATED MANIFEST ----
 
