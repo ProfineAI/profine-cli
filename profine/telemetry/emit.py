@@ -515,13 +515,22 @@ def _speedup_factor_from_bench(bench: dict[str, Any]) -> float | None:
 
 
 def _loss_ok_from_bench(bench: dict[str, Any]) -> bool | None:
-    """Use the comparator's correctness verdict as a proxy for loss_ok."""
+    """Use the correctness check's `passed` flag as the loss_ok signal.
+
+    The correctness sub-dict in benchmark_comparison.json has these keys:
+    `passed` (bool), `loss_match`, `max_loss_diff`, `rtol`, `atol`, `notes`,
+    `tolerance_widened`, `tolerance_widened_for`. Earlier versions of this
+    function read `correctness.verdict`, which never existed on the
+    correctness sub-dict — `verdict` lives on the top-level BenchmarkComparison.
+    That bug emitted `loss_ok=None` for every row, which made the
+    optimization_priors materialized view's `success_rate` column NULL for
+    every (fingerprint, optimization) pair, silently breaking the suggester's
+    priors-based failure-avoidance filter.
+    """
     correctness = bench.get("correctness")
     if not isinstance(correctness, dict):
         return None
-    verdict = correctness.get("verdict")
-    if isinstance(verdict, bool):
-        return verdict
-    if isinstance(verdict, str):
-        return verdict.lower() in ("pass", "ok", "true")
+    passed = correctness.get("passed")
+    if isinstance(passed, bool):
+        return passed
     return None
