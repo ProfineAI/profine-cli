@@ -2,6 +2,12 @@
 
 All notable changes to `profine` are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] — 2026-05-19
+
+### Fixed
+
+- **Telemetry: `_loss_ok_from_bench` was reading a non-existent key.** The function read `correctness.verdict` from `benchmark_comparison.json`, but the correctness sub-dict has a `passed` (bool) key, not a `verdict`. (`verdict` is a top-level `BenchmarkComparison` field.) The bug emitted `loss_ok=None` for every run sent to the telemetry backend, which made the server-side `optimization_priors` materialized view's `success_rate` column NULL for every (fingerprint, optimization) pair across the entire user base. The test fixture was buggy in the same way as the production code (it also used the `verdict` key), explaining the silent regression. Adds a focused regression test (`test_loss_ok_reads_correctness_passed_not_verdict`) that pins both the real and old-buggy shapes.
+
 ## [0.5.0] — 2026-05-18
 
 ### Breaking
