@@ -161,6 +161,26 @@ def test_loss_ok_reads_correctness_passed_not_verdict():
     assert _loss_ok_from_bench({"correctness": "not a dict"}) is None
 
 
+def test_primary_outcome_includes_runtime_seconds_from_profile(output_dir):
+    """Regression: _gather_outcomes never set `runtime_seconds` on emitted
+    outcome rows, even though the field is in ALLOWED_OUTCOME_FIELDS. The
+    server then stored NULL for every per-optimization runtime_seconds —
+    visible in run_optimizations.runtime_seconds being NULL across the
+    entire dataset. The primary outcome now carries the profile's wall-clock
+    runtime; stacked + skipped rows still omit it (no per-entry attribution)."""
+    _write(output_dir / "read" / "architecture_record.json", _arch_payload())
+    _write(output_dir / "profile" / "profile_record.json",
+           {"hardware_name": "1x_a100", "status": "ok", "runtime_seconds": 42.5})
+    _write(output_dir / "edit" / "change_manifest.json", _manifest_payload())
+    _write(output_dir / "benchmark" / "benchmark_comparison.json", _bench_payload())
+
+    rec = _enabled_recorder()
+    emit_run(output_dir, rec, hardware_name="1x_a100")
+
+    primary = rec.record_optimization.call_args_list[0]
+    assert primary.kwargs.get("runtime_seconds") == pytest.approx(42.5)
+
+
 def test_emit_run_records_correctness_fail_as_loss_ok_false(output_dir):
     _write(output_dir / "read" / "architecture_record.json", _arch_payload())
     _write(output_dir / "profile" / "profile_record.json", _profile_payload())

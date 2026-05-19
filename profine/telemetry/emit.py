@@ -448,6 +448,12 @@ def _gather_outcomes(output_dir: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     manifest = _safe_load_json(output_dir / _EDIT_DIR / _EDIT_MANIFEST)
     bench = _safe_load_json(output_dir / _BENCHMARK_DIR / _BENCH_COMPARISON)
+    # Profile record gives us per-run GPU wall-clock time. We attribute it
+    # to the primary outcome only, mirroring the speedup_factor convention
+    # (stacked optimizations ran together; the runtime is the stack's, not
+    # any single entry's).
+    profile = _safe_load_json(output_dir / _PROFILE_DIR / _PROFILE_FILE)
+    runtime_seconds = _maybe_float(profile.get("runtime_seconds")) if profile else None
 
     if manifest is None:
         return rows
@@ -466,6 +472,7 @@ def _gather_outcomes(output_dir: Path) -> list[dict[str, Any]]:
             "speedup_factor": speedup_factor,
             "loss_ok": loss_ok,
             "crashed": False,
+            "runtime_seconds": runtime_seconds,
         })
 
     # Applied-but-not-primary entries: we know they were applied; we
