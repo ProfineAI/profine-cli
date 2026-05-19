@@ -69,10 +69,19 @@ def _manifest_payload(applied=("compile_default",), skipped=()):
 
 
 def _bench_payload(speedup_pct: float = 35.0, correctness_pass: bool = True) -> dict:
+    # Mirrors the real benchmark_comparison.json shape: `correctness.passed`
+    # is the bool we read, and the top-level `verdict` is a string label.
     return {
         "speedup_pct": speedup_pct,
-        "correctness": {"verdict": "pass" if correctness_pass else "fail"},
-        "verdict": "speedup",
+        "correctness": {
+            "passed": correctness_pass,
+            "loss_match": correctness_pass,
+            "max_loss_diff": 0.01 if correctness_pass else 0.5,
+            "rtol": 0.05,
+            "atol": 0.01,
+            "notes": "",
+        },
+        "verdict": "PASS" if correctness_pass else "FAIL (correctness; speedup measured but loss diverged)",
     }
 
 
@@ -125,6 +134,31 @@ def test_emit_run_with_full_artifacts(output_dir):
     # Skipped — applied=False
     skipped = rec.record_optimization.call_args_list[2]
     assert skipped.kwargs["applied"] is False
+
+
+def test_loss_ok_reads_correctness_passed_not_verdict():
+    """Regression: _loss_ok_from_bench used to read `correctness.verdict`,
+    which never existed on the correctness sub-dict. The real key is
+    `correctness.passed` (bool). The bug emitted loss_ok=None for every
+    row, which made the optimization_priors materialized view's
+    success_rate column NULL across the board — silently breaking the
+    suggester's priors-based failure-avoidance filter."""
+    from profine.telemetry.emit import _loss_ok_from_bench
+
+    # Real shape: correctness.passed is the bool we read.
+    assert _loss_ok_from_bench({"correctness": {"passed": True}}) is True
+    assert _loss_ok_from_bench({"correctness": {"passed": False}}) is False
+
+    # Old buggy shape: correctness.verdict — must NOT be silently treated
+    # as truthy. Returning None is correct; emit.py will then record
+    # loss_ok=None and the priors view will filter that row out.
+    assert _loss_ok_from_bench({"correctness": {"verdict": "pass"}}) is None
+    assert _loss_ok_from_bench({"correctness": {"verdict": "fail"}}) is None
+
+    # Defensive cases.
+    assert _loss_ok_from_bench({}) is None
+    assert _loss_ok_from_bench({"correctness": None}) is None
+    assert _loss_ok_from_bench({"correctness": "not a dict"}) is None
 
 
 def test_emit_run_records_correctness_fail_as_loss_ok_false(output_dir):

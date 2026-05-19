@@ -49,7 +49,7 @@ MANIFEST: Final[dict[str, str]] = {
     "builder.py": "95125f663badc008eec68487da8deadecf0cb7f851bc29587fa59a425c8018c9",
     "consent.py": "55f9dfbf0123f72ec502992ac2a3e5a5fcffad4180f065840da443057b3f353b",
     "crash_class.py": "cd0394f0d12045e51da2a0d929df58cb25fb388aa51e3b95fde04376d4af8ecb",
-    "emit.py": "058c03bbfa395235324b64eb1afed102249e61223da0fd8e56779460e0f6d47f",
+    "emit.py": "fe3f9b659a50ac616d4c6418042725b93971fafa7d861cf0dce164a79ff96060",
     "fields.py": "130514e10372a6759907d94a132f1b17df74c386cbbdb060b895eeb2319be460",
     "fingerprint.py": "22c337757717501a2024f3c612650200138c79c788d24d2bd2d9b54405c27510",
     "priors.py": "6efe4ba19d6a64e01b3ad62eed67c43b504f6d8218f93d04b5cb177e46db7c1c",
